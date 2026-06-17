@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: am-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: am
+      POSTGRES_PASSWORD: am_dev
+      POSTGRES_DB: am
+    ports:
+      - "5432:5432"
+    volumes:
+      - am-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U am -d am"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  am-postgres-data:
