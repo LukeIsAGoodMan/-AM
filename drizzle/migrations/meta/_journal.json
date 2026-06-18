@@ -15,6 +15,13 @@
       "when": 1781754446526,
       "tag": "0001_gray_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781755560091,
+      "tag": "0002_new_roulette",
+      "breakpoints": true
     }
   ]
 }

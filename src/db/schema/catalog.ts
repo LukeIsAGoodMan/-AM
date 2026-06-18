@@ -16,8 +16,11 @@ import {
 //   - reward_rules: category_id, is_online/is_overseas/is_foreign_currency,
 //                   cap_amount_hkd, cap_period, cap_basis
 //
-// M3 will add: tier accrual fields (already inside reward_formula_payload),
-//              requires_registration, requires_activation, cap_scope.
+// M3 additions:
+//   - reward_rules: requires_activation, requires_registration
+//   - Tier accrual is INSIDE reward_formula_payload (Zod tiered_percent /
+//     tiered_points variants) — no DB column needed for accrual_period.
+//
 // M4 will add: applies_to, stacking_policy, exclusive_group.
 
 export const issuers = pgTable("issuers", {
@@ -146,6 +149,13 @@ export const rewardRules = pgTable("reward_rules", {
   isOnline: boolean("is_online"),
   isOverseas: boolean("is_overseas"),
   isForeignCurrency: boolean("is_foreign_currency"),
+
+  // M3: opt-in gating. Calculator skips the rule unless the user has
+  // included the rule_id in user_context.activatedRuleIds.
+  requiresActivation: boolean("requires_activation").default(false).notNull(),
+  requiresRegistration: boolean("requires_registration")
+    .default(false)
+    .notNull(),
 
   // M2: caps (single-rule scope; M4 adds cap_scope + cap_shared_group for stacking)
   capAmountHkd: numeric("cap_amount_hkd", { precision: 14, scale: 2 }),

@@ -1,0 +1,2 @@
+ALTER TABLE "reward_rules" ADD COLUMN "requires_activation" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "reward_rules" ADD COLUMN "requires_registration" boolean DEFAULT false NOT NULL;

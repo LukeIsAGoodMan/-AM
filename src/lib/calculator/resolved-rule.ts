@@ -21,6 +21,17 @@ export type ResolvedRule = {
   isOverseas: boolean | null
   isForeignCurrency: boolean | null
 
+  // M3: opt-in gating. Calculator skips this rule unless the rule_id appears
+  // in user_context.activatedRuleIds. Two flags carry semantic intent in the
+  // data; the calculator treats them identically.
+  requiresActivation: boolean
+  requiresRegistration: boolean
+
+  // M3: accrual key for tiered formulas. Where to look up "spend already
+  // accumulated in this period under this rule". Defaults to ruleId in
+  // mapping code; M4 grouped tiers may share a key across rules.
+  accrualKey: string
+
   // M2: single-rule cap. M4 will add capUsageKey override for shared groups.
   cap: ResolvedCap | null
 

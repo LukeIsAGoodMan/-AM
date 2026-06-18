@@ -17,6 +17,9 @@ const baseRule = (
   isOnline: null,
   isOverseas: null,
   isForeignCurrency: null,
+  requiresActivation: false,
+  requiresRegistration: false,
+  accrualKey: overrides.ruleId,
   cap: null,
   sourceId: "stub-source-id",
   confidenceScore: 0.9,
@@ -213,5 +216,125 @@ describe("calculate — M2 spending cap", () => {
     )
     expect(res.rewardValueHkd).toBe(0)
     expect(res.breakdown).toHaveLength(0)
+  })
+})
+
+// ---------- M3: tiered_percent with monthly accrual ----------
+
+describe("calculate — M3 tiered_percent (Hang Seng MPOWER-style)", () => {
+  const ruleId = "hang-seng-mpower__tiered_monthly"
+  const mpower = baseRule({
+    ruleId,
+    ruleName: "MPOWER monthly tier",
+    ruleType: "category_bonus",
+    formula: {
+      type: "tiered_percent",
+      accrualPeriod: "month",
+      tiers: [
+        { minAmountHkd: 0, maxAmountHkd: 4000, rate: 0.004 },
+        { minAmountHkd: 4000, maxAmountHkd: null, rate: 0.05 },
+      ],
+    },
+    requiresRegistration: true,
+  })
+
+  const ctx = (accrual: number) => ({
+    cardId: "hang-seng-mpower",
+    activatedRuleIds: [ruleId],
+    capUsage: { [ruleId]: accrual },
+  })
+
+  it("under tier-1 ceiling (accrual 0, spend 4000) → 16 HKD (all tier 1)", () => {
+    const res = calculate(
+      "hang-seng-mpower",
+      [mpower],
+      txn({ amountHkd: 4000 }),
+      ctx(0),
+    )
+    expect(res.rewardValueHkd).toBe(16) // 4000 × 0.4%
+  })
+
+  it("entirely in tier 2 (accrual 4000, spend 4000) → 200 HKD", () => {
+    const res = calculate(
+      "hang-seng-mpower",
+      [mpower],
+      txn({ amountHkd: 4000 }),
+      ctx(4000),
+    )
+    expect(res.rewardValueHkd).toBe(200) // 4000 × 5%
+  })
+
+  it("spans tier boundary (accrual 0, spend 8000) → 16 + 200 = 216 HKD", () => {
+    const res = calculate(
+      "hang-seng-mpower",
+      [mpower],
+      txn({ amountHkd: 8000 }),
+      ctx(0),
+    )
+    expect(res.rewardValueHkd).toBe(216)
+  })
+
+  it("partial bridge across boundary (accrual 3500, spend 1000) → 2 + 25 = 27 HKD", () => {
+    // 500 at tier-1 rate (0.4%) = 2; 500 at tier-2 rate (5%) = 25
+    const res = calculate(
+      "hang-seng-mpower",
+      [mpower],
+      txn({ amountHkd: 1000 }),
+      ctx(3500),
+    )
+    expect(res.rewardValueHkd).toBe(27)
+  })
+
+  it("cross-month reset → 4000 spent this month starts at tier 1 again", () => {
+    // Caller is responsible for resetting accrual at month boundary. We
+    // simulate that by passing accrual=0 even though "last month" was 6000.
+    const res = calculate(
+      "hang-seng-mpower",
+      [mpower],
+      txn({ amountHkd: 4000 }),
+      ctx(0),
+    )
+    expect(res.rewardValueHkd).toBe(16)
+  })
+
+  it("requires_registration: not in activatedRuleIds → 0 reward", () => {
+    const res = calculate(
+      "hang-seng-mpower",
+      [mpower],
+      txn({ amountHkd: 8000 }),
+      { cardId: "hang-seng-mpower", capUsage: { [ruleId]: 0 } },
+    )
+    expect(res.rewardValueHkd).toBe(0)
+    expect(res.breakdown).toHaveLength(0)
+  })
+
+  it("requires_registration: in activatedRuleIds → reward applies", () => {
+    const res = calculate(
+      "hang-seng-mpower",
+      [mpower],
+      txn({ amountHkd: 8000 }),
+      ctx(0),
+    )
+    expect(res.rewardValueHkd).toBe(216)
+  })
+
+  it("requires_activation flag (semantic synonym) gates the same way", () => {
+    const variant: ResolvedRule = {
+      ...mpower,
+      requiresActivation: true,
+      requiresRegistration: false,
+    }
+    const denied = calculate("hang-seng-mpower", [variant], txn({ amountHkd: 4000 }), {
+      cardId: "hang-seng-mpower",
+      capUsage: { [ruleId]: 0 },
+    })
+    const allowed = calculate(
+      "hang-seng-mpower",
+      [variant],
+      txn({ amountHkd: 4000 }),
+      ctx(0),
+    )
+    expect(denied.rewardValueHkd).toBe(0)
+    expect(allowed.rewardValueHkd).toBe(16)
   })
 })

@@ -9,9 +9,16 @@ import {
 } from "./schema/catalog"
 import { seedCategories } from "./seed-categories"
 
-// M2 seed: 2 issuers, 1 currency, 30+ categories, 2 sources, 2 cards, 3 rules.
-//   Citi Cash Back (carried from M1) — flat 1.2% base earn
-//   HSBC Red       — 0.4% base earn + 4% online_local capped at HKD 100k/yr
+// M3 seed: 3 issuers, 1 currency, 30+ categories, 3 sources, 3 cards, 4 rules.
+//   Citi Cash Back  (M1) — flat 1.2% base earn
+//   HSBC Red        (M2) — 0.4% base + 4% online_local capped at HKD 100k/yr
+//   Hang Seng MPOWER(M3) — tiered_percent monthly:
+//                          [0, 4000) @ 0.4%, [4000, ∞) @ 5%
+//                          requires_registration=true
+//
+// Roadmap M3 named HSBC EveryMile; real EveryMile is category-based
+// (HK$4/HK$8 = 1 mile by online/overseas), not monthly tier. MPOWER is
+// the closer stress fit. Both are simplifications of real products.
 //
 // Idempotent — re-running is safe.
 // YAML-driven import replaces this script in M6.
@@ -254,7 +261,115 @@ export async function seed(db: DB) {
         .returning({ id: rewardRules.id }),
   )
 
-  return { citiCashBackId: citiCashBack, hsbcRedId: hsbcRed }
+  // ---------- Hang Seng MPOWER (M3 adversarial: monthly tiered) ----------
+
+  const hangSeng = await upsertById(
+    () =>
+      db
+        .select({ id: issuers.id })
+        .from(issuers)
+        .where(eq(issuers.slug, "hang-seng")),
+    () =>
+      db
+        .insert(issuers)
+        .values({
+          slug: "hang-seng",
+          nameEn: "Hang Seng",
+          nameZh: "恒生",
+          websiteUrl: "https://www.hangseng.com",
+        })
+        .returning({ id: issuers.id }),
+  )
+
+  const hsMpower = await upsertById(
+    () =>
+      db
+        .select({ id: cards.id })
+        .from(cards)
+        .where(eq(cards.slug, "hang-seng-mpower")),
+    () =>
+      db
+        .insert(cards)
+        .values({
+          issuerId: hangSeng,
+          slug: "hang-seng-mpower",
+          productFamily: "Hang Seng MPOWER",
+          cardNameEn: "Hang Seng MPOWER Card",
+          cardNameZh: "恒生 MPOWER 信用卡",
+          network: "Mastercard",
+          cardLevel: "platinum",
+          status: "active",
+          officialUrl: "https://www.hangseng.com/en-hk/credit-cards/all-cards/mpower/",
+          notes:
+            "M3 simplification — 2-tier monthly rebate (0.4% / 5%). Real card has category overlays and a separate max-rebate cap; both added in M4/M9.",
+        })
+        .returning({ id: cards.id }),
+  )
+
+  const hsMpowerSource = await upsertById(
+    () =>
+      db
+        .select({ id: sourceDocuments.id })
+        .from(sourceDocuments)
+        .where(eq(sourceDocuments.slug, "hang-seng-mpower-official-page")),
+    () =>
+      db
+        .insert(sourceDocuments)
+        .values({
+          slug: "hang-seng-mpower-official-page",
+          issuerId: hangSeng,
+          cardId: hsMpower,
+          sourceType: "official_page",
+          sourcePriority: 2,
+          title: "Hang Seng MPOWER Card — official product page",
+          url: "https://www.hangseng.com/en-hk/credit-cards/all-cards/mpower/",
+          language: "mixed",
+          status: "active",
+          notes:
+            "M3 placeholder source. Replace with real T&C PDF in M9.",
+        })
+        .returning({ id: sourceDocuments.id }),
+  )
+
+  await upsertById(
+    () =>
+      db
+        .select({ id: rewardRules.id })
+        .from(rewardRules)
+        .where(eq(rewardRules.slug, "hang-seng-mpower__tiered_monthly")),
+    () =>
+      db
+        .insert(rewardRules)
+        .values({
+          cardId: hsMpower,
+          slug: "hang-seng-mpower__tiered_monthly",
+          ruleName: "MPOWER monthly tiered rebate",
+          ruleType: "category_bonus",
+          status: "approved",
+          rewardFormulaType: "tiered_percent",
+          rewardFormulaPayload: {
+            type: "tiered_percent",
+            accrualPeriod: "month",
+            tiers: [
+              { minAmountHkd: 0, maxAmountHkd: 4000, rate: 0.004 },
+              { minAmountHkd: 4000, maxAmountHkd: null, rate: 0.05 },
+            ],
+          },
+          rewardCurrencyId: hkdCashback,
+          requiresRegistration: true,
+          sourceId: hsMpowerSource,
+          confidenceScore: "0.800",
+          notes:
+            "Tier resets every calendar month — caller passes capUsage keyed by '<ruleId>__<YYYY-MM>' to keep periods isolated.",
+        })
+        .returning({ id: rewardRules.id }),
+  )
+
+  return {
+    citiCashBackId: citiCashBack,
+    hsbcRedId: hsbcRed,
+    hangSengMpowerId: hsMpower,
+  }
 }
 
 async function upsertById(
