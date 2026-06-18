@@ -1,0 +1,29 @@
+issuerSlug: cncbi
+card:
+  slug: cncbi-gba-dual-currency-credit-card
+  cardNameEn: CNCBI GBA Dual Currency Credit Card
+  network: UnionPay
+  annualFeeHkd: 0
+  status: draft
+  officialUrl: https://www.cncbinternational.com
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Cross-border
+    xlsxSpecialty: Greater Bay travel
+    xlsxBaseRewardText: 10% RMB cashback
+    summaryZh: CNCBI GBA Dual Currency Credit Card 是一張主打旅遊及里數累積的信用卡，日常消費可透過 10% RMB cashback
+      積累旅遊回贈。此卡特別適合經常外遊或出差的用戶，能將日常及海外消費轉化為機票或旅遊禮遇，是旅遊型信用卡中的實用選擇。
+    bestUseCaseZh: 海外消費、機票或旅遊相關開支、累積航空里數
+    welcomeOfferDraft:
+      spendRequirementText: None
+      bonusType: Cashback
+      bonusValueText: HK$500
+      periodDays: 90
+sources: []
+rules: []

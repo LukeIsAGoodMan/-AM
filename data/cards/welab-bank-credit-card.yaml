@@ -1,0 +1,28 @@
+issuerSlug: welab-bank
+card:
+  slug: welab-bank-credit-card
+  cardNameEn: WeLab Bank Credit Card
+  network: Mastercard
+  annualFeeHkd: 0
+  status: draft
+  officialUrl: https://www.welab.bank
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Digital
+    xlsxSpecialty: Digital banking
+    xlsxBaseRewardText: Cashback
+    summaryZh: WeLab Bank Credit Card 是一張定位多用途的信用卡，透過 Cashback 為日常消費提供回贈或積分累積。此卡適合作為日常消費主卡，能在多種消費場景中穩定累積回贈。
+    bestUseCaseZh: 電子支付、數碼銀行用戶及日常小額消費
+    welcomeOfferDraft:
+      spendRequirementText: Campaign
+      bonusType: Cashback
+      bonusValueText: Campaign
+      periodDays: 60
+sources: []
+rules: []

@@ -1,0 +1,29 @@
+issuerSlug: american-express
+card:
+  slug: american-express-gold-card
+  cardNameEn: American Express Gold Card
+  network: Amex
+  annualFeeHkd: 1800
+  status: draft
+  officialUrl: https://www.americanexpress.com/hk
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Rewards
+    xlsxSpecialty: Dining
+    xlsxBaseRewardText: Membership Rewards
+    summaryZh: American Express Gold Card 是一張主打餐飲及生活消費優惠的信用卡，透過 Membership Rewards
+      提供額外回贈。對於經常外出用餐或重視生活品味優惠的用戶特別合適。
+    bestUseCaseZh: 餐飲消費、生活娛樂及聚餐場合
+    welcomeOfferDraft:
+      spendRequirementText: HK$5,000
+      bonusType: Points
+      bonusValueText: 75,000 MR points
+      periodDays: 90
+sources: []
+rules: []

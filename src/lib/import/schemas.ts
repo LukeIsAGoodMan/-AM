@@ -178,6 +178,9 @@ const CardMetaSchema = z.object({
   status: z.enum(["draft", "active", "discontinued", "archived"]).default("draft"),
   officialUrl: z.string().url().optional(),
   notes: z.string().optional(),
+  // M9: free-form features. No structural validation in MVP — Phase 2 may
+  // tighten if a Q&A schema emerges (e.g. typed lounge programs).
+  qualitativeFeatures: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const CardFileSchema = z.object({

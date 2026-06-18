@@ -215,44 +215,32 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
     }
 
     // Upsert card
+    const cardValues = {
+      issuerId,
+      productFamily: data.card.productFamily,
+      variantSlug: data.card.variantSlug,
+      cardNameEn: data.card.cardNameEn,
+      cardNameZh: data.card.cardNameZh,
+      network: data.card.network,
+      cardLevel: data.card.cardLevel,
+      annualFeeHkd: data.card.annualFeeHkd?.toString(),
+      status: data.card.status,
+      officialUrl: data.card.officialUrl,
+      notes: data.card.notes,
+      qualitativeFeatures: data.card.qualitativeFeatures ?? {},
+    }
     const cardId = await upsertBySlug(
       db,
       () => db.select({ id: cards.id }).from(cards).where(eq(cards.slug, data.card.slug)),
       () =>
         db
           .insert(cards)
-          .values({
-            issuerId,
-            slug: data.card.slug,
-            productFamily: data.card.productFamily,
-            variantSlug: data.card.variantSlug,
-            cardNameEn: data.card.cardNameEn,
-            cardNameZh: data.card.cardNameZh,
-            network: data.card.network,
-            cardLevel: data.card.cardLevel,
-            annualFeeHkd: data.card.annualFeeHkd?.toString(),
-            status: data.card.status,
-            officialUrl: data.card.officialUrl,
-            notes: data.card.notes,
-          })
+          .values({ ...cardValues, slug: data.card.slug })
           .returning({ id: cards.id }),
       () =>
         db
           .update(cards)
-          .set({
-            issuerId,
-            productFamily: data.card.productFamily,
-            variantSlug: data.card.variantSlug,
-            cardNameEn: data.card.cardNameEn,
-            cardNameZh: data.card.cardNameZh,
-            network: data.card.network,
-            cardLevel: data.card.cardLevel,
-            annualFeeHkd: data.card.annualFeeHkd?.toString(),
-            status: data.card.status,
-            officialUrl: data.card.officialUrl,
-            notes: data.card.notes,
-            updatedAt: new Date(),
-          })
+          .set({ ...cardValues, updatedAt: new Date() })
           .where(eq(cards.slug, data.card.slug)),
     )
 

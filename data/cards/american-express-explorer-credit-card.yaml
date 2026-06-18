@@ -1,0 +1,91 @@
+issuerSlug: american-express
+
+card:
+  slug: american-express-explorer-credit-card
+  cardNameEn: American Express Explorer Credit Card
+  cardNameZh: 美國運通 Explorer 信用卡
+  network: Amex
+  cardLevel: platinum
+  annualFeeHkd: 1800
+  status: active
+  officialUrl: https://www.americanexpress.com/hk
+  notes: |
+    M9 modeling — HK$5 = 1 MR base + double MR (1 per HK$2.5) on overseas
+    spend + tax exclusion (bonus only). Lounge / status benefits not modeled.
+    Real card also has dining bonus tiers — added in Phase 2.
+  qualitativeFeatures:
+    xlsxCategory: Travel
+    xlsxSpecialty: Travel rewards
+    xlsxBaseRewardText: Membership Rewards
+    summaryZh: |
+      Amex Explorer 主打旅遊獎賞積分（MR），日常 HK$5 = 1 MR，海外消費加倍。MR 可轉 Asia Miles 或抵扣旅費。
+    bestUseCaseZh: 海外消費、機票及酒店、MR 轉里數策略
+    welcomeOfferDraft:
+      spendRequirementText: HK$7,000
+      bonusType: Points
+      bonusValueText: 108,000 MR points
+      periodDays: 90
+
+sources:
+  - slug: american-express-explorer-credit-card-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: American Express Explorer Credit Card — official page
+    url: https://www.americanexpress.com/hk
+    language: mixed
+    status: active
+    notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.
+
+rules:
+  - slug: american-express-explorer-credit-card__base_earn
+    ruleName: Base earn (HK$5 = 1 MR)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 5
+      currencySlug: amex_membership_rewards
+    rewardCurrencySlug: amex_membership_rewards
+    sourceSlug: american-express-explorer-credit-card-official-page
+    confidenceScore: 0.75
+    priority: 100
+
+  - slug: american-express-explorer-credit-card__overseas_bonus
+    ruleName: Overseas bonus (additive HK$5 = 1 MR)
+    ruleType: overseas_bonus
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 5
+      currencySlug: amex_membership_rewards
+    rewardCurrencySlug: amex_membership_rewards
+    isOverseas: true
+    stackingPolicy: additive
+    sourceSlug: american-express-explorer-credit-card-official-page
+    confidenceScore: 0.7
+    priority: 90
+    notes: |
+      Stacks with base for effective HK$2.5 = 1 MR overseas. Real card may use
+      different rate — verify in Phase 2.
+
+  - slug: american-express-explorer-credit-card__tax_exclusion
+    ruleName: Tax / government — bonus excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: Tax / government category does not earn bonus MR points.
+    rewardCurrencySlug: amex_membership_rewards
+    categorySlug: tax_government
+    appliesTo:
+      - category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: american-express-explorer-credit-card-official-page
+    confidenceScore: 0.8

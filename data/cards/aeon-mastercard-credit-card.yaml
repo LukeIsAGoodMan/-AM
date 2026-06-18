@@ -1,0 +1,29 @@
+issuerSlug: aeon
+card:
+  slug: aeon-mastercard-credit-card
+  cardNameEn: AEON Mastercard Credit Card
+  network: Mastercard
+  annualFeeHkd: 0
+  status: draft
+  officialUrl: https://www.aeon.com.hk
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Cashback
+    xlsxSpecialty: Retail spending
+    xlsxBaseRewardText: AEON points
+    summaryZh: AEON Mastercard Credit Card 是一張定位多用途的信用卡，透過 AEON points
+      為日常消費提供回贈或積分累積。此卡適合作為日常消費主卡，能在多種消費場景中穩定累積回贈。
+    bestUseCaseZh: 日常生活開支及一般消費
+    welcomeOfferDraft:
+      spendRequirementText: HK$6,000
+      bonusType: Cashback
+      bonusValueText: HK$700 rebate
+      periodDays: 60
+sources: []
+rules: []

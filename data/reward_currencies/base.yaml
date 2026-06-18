@@ -13,3 +13,12 @@ currencies:
     baseValueHkd: 0.10
     valuationNote: |
       1 mile ≈ HKD 0.10 — conservative estimate; long-haul J redemptions can yield 0.15–0.25.
+
+  - slug: amex_membership_rewards
+    nameEn: American Express Membership Rewards
+    nameZh: 美國運通積分獎賞
+    type: points
+    baseValueHkd: 0.04
+    valuationNote: |
+      1 MR point ≈ HKD 0.04 — uses Asia Miles transfer ratio (1500 MR → 540 miles
+      ≈ 0.036 × 1.5). Phase 2 will refine after pulling actual transfer charts.

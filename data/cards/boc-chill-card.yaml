@@ -1,0 +1,91 @@
+issuerSlug: boc
+
+card:
+  slug: boc-chill-card
+  cardNameEn: BOC Chill Card
+  cardNameZh: 中銀 Chill 卡
+  network: Visa
+  cardLevel: platinum
+  annualFeeHkd: 0
+  status: active
+  officialUrl: https://www.bochk.com
+  notes: |
+    M9 modeling — 0.4% base + 5% online_local bonus capped at HKD 50k/yr
+    eligible spend + tax exclusion (bonus only, base earns). Real card has
+    additional designated-merchant 10% tier not modeled — added in Phase 2.
+  qualitativeFeatures:
+    xlsxCategory: Cashback
+    xlsxSpecialty: Lifestyle spend
+    xlsxBaseRewardText: 10% category rebate
+    summaryZh: |
+      BOC Chill Card 是中銀年輕用戶主打卡，網購類別有顯著額外回贈。
+    bestUseCaseZh: 線上消費、訂閱服務、年輕用戶主卡
+    welcomeOfferDraft:
+      spendRequirementText: None
+      bonusType: Cashback
+      bonusValueText: HK$500
+      periodDays: 90
+
+sources:
+  - slug: boc-chill-card-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: BOC Chill Card — official page
+    url: https://www.bochk.com
+    language: mixed
+    status: active
+    notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.
+
+rules:
+  - slug: boc-chill-card__base_earn
+    ruleName: Base earn (0.4%)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.004
+    rewardCurrencySlug: hkd_cashback
+    sourceSlug: boc-chill-card-official-page
+    confidenceScore: 0.75
+    priority: 100
+
+  - slug: boc-chill-card__online_local_bonus
+    ruleName: Online local 5% bonus
+    ruleType: online_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.05
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: online_local
+    isOnline: true
+    isOverseas: false
+    cap:
+      amountHkd: 50000
+      period: year
+      basis: spending
+    sourceSlug: boc-chill-card-official-page
+    confidenceScore: 0.65
+    priority: 80
+    notes: M9 estimate — verify exact cap with T&C in Phase 2.
+
+  - slug: boc-chill-card__tax_exclusion
+    ruleName: Tax / government — bonus excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: Tax / government category does not earn bonus rewards.
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: tax_government
+    appliesTo:
+      - category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: boc-chill-card-official-page
+    confidenceScore: 0.8
+    notes: base_earn deliberately NOT in appliesTo — tax still earns base 0.4%.

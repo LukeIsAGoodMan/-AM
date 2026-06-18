@@ -1,0 +1,89 @@
+issuerSlug: dbs
+
+card:
+  slug: dbs-black-world-mastercard
+  cardNameEn: DBS Black World Mastercard
+  cardNameZh: DBS Black World 萬事達卡
+  network: Mastercard
+  cardLevel: world
+  annualFeeHkd: 2000
+  status: active
+  officialUrl: https://www.dbs.com.hk
+  notes: |
+    M9 simplified model — 0.5% base + 5% local dining capped at HKD 60k/yr
+    eligible spend + tax exclusion. Real card has additional travel/overseas
+    categories not yet modeled — added when Phase 2 source extraction lands.
+  qualitativeFeatures:
+    xlsxCategory: Premium
+    xlsxSpecialty: Dining / travel
+    xlsxBaseRewardText: Cashback categories
+    summaryZh: |
+      DBS Black World Mastercard 是 DBS 旗艦現金回贈卡，主打餐飲及旅遊類別額外回贈。
+    bestUseCaseZh: 餐飲消費、海外旅遊、需要餐飲類額外回贈
+    welcomeOfferDraft:
+      spendRequirementText: HK$5,000
+      bonusType: Cashback
+      bonusValueText: HK$500
+      periodDays: 60
+
+sources:
+  - slug: dbs-black-world-mastercard-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: DBS Black World Mastercard — official product page
+    url: https://www.dbs.com.hk
+    language: mixed
+    status: active
+    notes: M9 placeholder URL (issuer root). Replace with deep link / T&C PDF when verified.
+
+rules:
+  - slug: dbs-black-world-mastercard__base_earn
+    ruleName: Base earn (0.5%)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.005
+    rewardCurrencySlug: hkd_cashback
+    sourceSlug: dbs-black-world-mastercard-official-page
+    confidenceScore: 0.7
+    priority: 100
+
+  - slug: dbs-black-world-mastercard__dining_local_bonus
+    ruleName: Dining local 5% bonus
+    ruleType: category_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.05
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: dining_local
+    cap:
+      amountHkd: 60000
+      period: year
+      basis: spending
+    sourceSlug: dbs-black-world-mastercard-official-page
+    confidenceScore: 0.65
+    priority: 80
+    notes: M9 estimate — verify exact cap with T&C in Phase 2.
+
+  - slug: dbs-black-world-mastercard__tax_exclusion
+    ruleName: Tax / government — bonus excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: Tax / government category does not earn bonus rewards.
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: tax_government
+    appliesTo:
+      - category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: dbs-black-world-mastercard-official-page
+    confidenceScore: 0.8
+    notes: base_earn deliberately NOT in appliesTo — tax still earns base.

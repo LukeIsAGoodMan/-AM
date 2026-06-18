@@ -1,0 +1,28 @@
+issuerSlug: dbs
+card:
+  slug: dbs-compass-visa
+  cardNameEn: DBS COMPASS VISA
+  network: Visa
+  annualFeeHkd: 0
+  status: draft
+  officialUrl: https://www.dbs.com.hk
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Rewards
+    xlsxSpecialty: Retail ecosystem
+    xlsxBaseRewardText: yuu points
+    summaryZh: DBS COMPASS VISA 是一張定位多用途的信用卡，透過 yuu points 為日常消費提供回贈或積分累積。此卡適合作為日常消費主卡，能在多種消費場景中穩定累積回贈。
+    bestUseCaseZh: 日常生活開支及一般消費
+    welcomeOfferDraft:
+      spendRequirementText: HK$5,000
+      bonusType: Points
+      bonusValueText: 200k yuu points
+      periodDays: 60
+sources: []
+rules: []

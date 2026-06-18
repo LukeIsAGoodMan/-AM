@@ -1,0 +1,1 @@
+ALTER TABLE "cards" ADD COLUMN "qualitative_features" jsonb DEFAULT '{}'::jsonb NOT NULL;

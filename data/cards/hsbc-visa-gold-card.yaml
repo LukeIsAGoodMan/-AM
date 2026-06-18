@@ -1,0 +1,28 @@
+issuerSlug: hsbc
+card:
+  slug: hsbc-visa-gold-card
+  cardNameEn: HSBC Visa Gold Card
+  network: Visa
+  annualFeeHkd: 1500
+  status: draft
+  officialUrl: https://www.hsbc.com.hk
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Entry
+    xlsxSpecialty: General
+    xlsxBaseRewardText: RewardCash
+    summaryZh: HSBC Visa Gold Card 是一張定位多用途的信用卡，透過 RewardCash 為日常消費提供回贈或積分累積。此卡適合作為日常消費主卡，能在多種消費場景中穩定累積回贈。
+    bestUseCaseZh: 日常生活開支及一般消費
+    welcomeOfferDraft:
+      spendRequirementText: HK$2,500
+      bonusType: Cashback
+      bonusValueText: HK$800 RewardCash
+      periodDays: 60
+sources: []
+rules: []

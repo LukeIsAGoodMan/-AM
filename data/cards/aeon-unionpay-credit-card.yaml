@@ -1,0 +1,28 @@
+issuerSlug: aeon
+card:
+  slug: aeon-unionpay-credit-card
+  cardNameEn: AEON UnionPay Credit Card
+  network: UnionPay
+  annualFeeHkd: 0
+  status: draft
+  officialUrl: https://www.aeon.com.hk
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Cashback
+    xlsxSpecialty: Mainland spending
+    xlsxBaseRewardText: AEON points
+    summaryZh: AEON UnionPay Credit Card 是一張主打跨境及內地消費的信用卡，透過 AEON points 為人民幣或跨境交易提供回贈。適合經常往返中港兩地或於內地消費的用戶。
+    bestUseCaseZh: 中港跨境消費、人民幣交易或內地旅遊
+    welcomeOfferDraft:
+      spendRequirementText: HK$6,000
+      bonusType: Cashback
+      bonusValueText: HK$700 rebate
+      periodDays: 60
+sources: []
+rules: []

@@ -1,0 +1,91 @@
+issuerSlug: standard-chartered
+
+card:
+  slug: standard-chartered-cathay-mastercard
+  cardNameEn: Standard Chartered Cathay Mastercard
+  cardNameZh: 渣打國泰萬事達卡
+  network: Mastercard
+  cardLevel: world
+  annualFeeHkd: 3800
+  status: active
+  officialUrl: https://www.sc.com/hk
+  notes: |
+    M9 modeling — HK$5 = 1 mile base + HK$3 = 1 mile on Cathay Pacific
+    merchant spend (additive). Real card tiers + status-mile bonuses not
+    modeled — added in Phase 2.
+  qualitativeFeatures:
+    xlsxCategory: Airline
+    xlsxSpecialty: Cathay partnership
+    xlsxBaseRewardText: Asia Miles earn
+    summaryZh: |
+      渣打國泰卡是國泰常旅客主卡，日常 HK$5 換 1 mile，國泰票務及香港快運額外加碼。
+    bestUseCaseZh: 國泰常旅客、累積 Asia Miles 為核心
+    welcomeOfferDraft:
+      spendRequirementText: HK$10,000
+      bonusType: Miles
+      bonusValueText: Up to 100,000 miles
+      periodDays: 90
+
+sources:
+  - slug: standard-chartered-cathay-mastercard-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Standard Chartered Cathay Mastercard — official page
+    url: https://www.sc.com/hk
+    language: mixed
+    status: active
+    notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.
+
+rules:
+  - slug: standard-chartered-cathay-mastercard__base_earn
+    ruleName: Base earn (HK$5 = 1 mile)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 5
+      currencySlug: asia_miles
+    rewardCurrencySlug: asia_miles
+    sourceSlug: standard-chartered-cathay-mastercard-official-page
+    confidenceScore: 0.75
+    priority: 100
+
+  - slug: standard-chartered-cathay-mastercard__overseas_bonus
+    ruleName: Overseas bonus (additive HK$5 = 1 mile)
+    ruleType: overseas_bonus
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 5
+      currencySlug: asia_miles
+    rewardCurrencySlug: asia_miles
+    isOverseas: true
+    stackingPolicy: additive
+    sourceSlug: standard-chartered-cathay-mastercard-official-page
+    confidenceScore: 0.65
+    priority: 90
+    notes: |
+      M9 estimate — Cathay co-brand cards typically double up overseas
+      to effective HK$2.5 = 1 mile. Verify with T&C in Phase 2.
+
+  - slug: standard-chartered-cathay-mastercard__tax_exclusion
+    ruleName: Tax / government — bonus excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: Tax / government category does not earn bonus miles.
+    rewardCurrencySlug: asia_miles
+    categorySlug: tax_government
+    appliesTo:
+      - category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: standard-chartered-cathay-mastercard-official-page
+    confidenceScore: 0.8

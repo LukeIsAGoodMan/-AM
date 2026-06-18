@@ -42,6 +42,11 @@ import {
 //                       content_hash, retrieved_at (forward-compat for Phase 2 RAG)
 //   - source_chunks table: ~500-token slices of extracted_text;
 //                          embedding column added in Phase 2 migration
+//
+// M9 additions:
+//   - cards.qualitative_features jsonb — features the calculator can't
+//     express but the future Q&A layer needs (no_fx_fee, lounge_visits,
+//     highlights_zh, good_for tags, etc.). Per PRD §6.2.
 
 export const issuers = pgTable("issuers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -161,6 +166,13 @@ export const cards = pgTable("cards", {
   status: text("status").default("draft").notNull(),
   officialUrl: text("official_url"),
   notes: text("notes"),
+  // M9: jsonb features the calculator can't model but Q&A / comparison needs.
+  // Shape examples:
+  //   { no_fx_fee: true, lounge_visits_per_year: 6,
+  //     good_for: ["travel","miles"],
+  //     highlights_en: ["No FX fee", "Priority Pass 6x/yr"],
+  //     highlights_zh: ["免外幣交易費", ...] }
+  qualitativeFeatures: jsonb("qualitative_features").default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

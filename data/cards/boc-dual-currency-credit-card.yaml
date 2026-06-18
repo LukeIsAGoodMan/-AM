@@ -1,0 +1,29 @@
+issuerSlug: boc
+card:
+  slug: boc-dual-currency-credit-card
+  cardNameEn: BOC Dual Currency Credit Card
+  network: UnionPay
+  annualFeeHkd: 0
+  status: draft
+  officialUrl: https://www.bochk.com
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Cross-border
+    xlsxSpecialty: RMB spending
+    xlsxBaseRewardText: Gift points
+    summaryZh: BOC Dual Currency Credit Card 是一張主打跨境及內地消費的信用卡，透過 Gift points
+      為人民幣或跨境交易提供回贈。適合經常往返中港兩地或於內地消費的用戶。
+    bestUseCaseZh: 中港跨境消費、人民幣交易或內地旅遊
+    welcomeOfferDraft:
+      spendRequirementText: HK$10,000
+      bonusType: Points
+      bonusValueText: 20,000 points
+      periodDays: 90
+sources: []
+rules: []

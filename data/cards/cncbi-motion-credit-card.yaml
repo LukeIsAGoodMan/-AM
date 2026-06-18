@@ -1,0 +1,29 @@
+issuerSlug: cncbi
+card:
+  slug: cncbi-motion-credit-card
+  cardNameEn: CNCBI Motion Credit Card
+  network: Mastercard
+  annualFeeHkd: 0
+  status: draft
+  officialUrl: https://www.cncbinternational.com
+  notes: >-
+    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+
+    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
+    rules.
+
+    Hand-promote to approved by adding rules[] and changing status above.
+  qualitativeFeatures:
+    xlsxCategory: Cashback
+    xlsxSpecialty: Young professionals
+    xlsxBaseRewardText: 6% dining cashback
+    summaryZh: CNCBI Motion Credit Card 是一張定位多用途的信用卡，透過 6% dining cashback
+      為日常消費提供回贈或積分累積。此卡適合作為日常消費主卡，能在多種消費場景中穩定累積回贈。
+    bestUseCaseZh: 日常生活開支及一般消費
+    welcomeOfferDraft:
+      spendRequirementText: None
+      bonusType: Cashback
+      bonusValueText: HK$600
+      periodDays: 90
+sources: []
+rules: []

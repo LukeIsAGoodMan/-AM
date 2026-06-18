@@ -1,0 +1,92 @@
+issuerSlug: standard-chartered
+
+card:
+  slug: standard-chartered-simply-cash-visa-card
+  cardNameEn: Standard Chartered Simply Cash Visa Card
+  cardNameZh: 渣打 Simply Cash Visa 卡
+  network: Visa
+  cardLevel: platinum
+  annualFeeHkd: 0
+  status: active
+  officialUrl: https://www.sc.com/hk
+  notes: |
+    M9 modeling — flat 1.5% base cashback. Real card has tax + ewallet topup
+    exclusions and a monthly reward cap not yet modeled — added in Phase 2.
+  qualitativeFeatures:
+    xlsxCategory: Cashback
+    xlsxSpecialty: Everyday spend
+    xlsxBaseRewardText: 1.5% cashback
+    summaryZh: |
+      Simply Cash Visa 主打全方位 1.5% 現金回贈，無類別限制。適合不愛研究類別獎賞的用戶。
+    bestUseCaseZh: 日常一般消費（不愛研究類別獎賞時的主卡）
+    welcomeOfferDraft:
+      spendRequirementText: HK$6,000
+      bonusType: Cashback
+      bonusValueText: HK$1,000
+      periodDays: 90
+
+sources:
+  - slug: standard-chartered-simply-cash-visa-card-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Standard Chartered Simply Cash Visa Card — official page
+    url: https://www.sc.com/hk
+    language: mixed
+    status: active
+    notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.
+
+rules:
+  - slug: standard-chartered-simply-cash-visa-card__base_earn
+    ruleName: Base earn (1.5%)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.015
+    rewardCurrencySlug: hkd_cashback
+    sourceSlug: standard-chartered-simply-cash-visa-card-official-page
+    confidenceScore: 0.75
+    priority: 100
+
+  - slug: standard-chartered-simply-cash-visa-card__ewallet_topup_exclusion
+    ruleName: E-wallet top-up — fully excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: E-wallet top-ups do not earn cashback on this card.
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: ewallet_topup
+    # Includes base_earn — this exclusion fully excludes rather than just stripping bonuses.
+    appliesTo:
+      - base_earn
+      - category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: standard-chartered-simply-cash-visa-card-official-page
+    confidenceScore: 0.8
+
+  - slug: standard-chartered-simply-cash-visa-card__tax_exclusion
+    ruleName: Tax / government — fully excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: Tax payments do not earn cashback on this card.
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: tax_government
+    appliesTo:
+      - base_earn
+      - category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: standard-chartered-simply-cash-visa-card-official-page
+    confidenceScore: 0.8
