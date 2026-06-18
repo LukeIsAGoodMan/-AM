@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import {
   pgTable,
   uuid,
@@ -7,6 +8,7 @@ import {
   integer,
   jsonb,
   boolean,
+  check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core"
 
@@ -191,7 +193,14 @@ export const rewardRules = pgTable("reward_rules", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-})
+}, (table) => [
+  // PRD §5 principle 1: every approved rule must have a source.
+  // Calculator semantics §7 invariant 1.
+  check(
+    "reward_rules_approved_must_have_source",
+    sql`${table.status} <> 'approved' OR ${table.sourceId} IS NOT NULL`,
+  ),
+])
 
 export type Issuer = typeof issuers.$inferSelect
 export type NewIssuer = typeof issuers.$inferInsert

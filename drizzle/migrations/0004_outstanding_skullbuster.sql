@@ -1,0 +1,1 @@
+ALTER TABLE "reward_rules" ADD CONSTRAINT "reward_rules_approved_must_have_source" CHECK ("reward_rules"."status" <> 'approved' OR "reward_rules"."source_id" IS NOT NULL);
