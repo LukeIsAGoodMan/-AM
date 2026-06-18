@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import { calculate } from "@/lib/calculator/calculate"
 import type { ResolvedRule } from "@/lib/calculator/resolved-rule"
 import type { TransactionContext } from "@/lib/schemas/transaction"
+import { HardcodedMerchantResolver } from "@/lib/resolver/hardcoded"
 
 // Test fixtures kept inline. As cards grow we'll extract to /test-fixtures.
 
@@ -554,5 +555,122 @@ describe("calculate — M4 stacking policies", () => {
     expect(res.rewardValueHkd).toBe(80)
     expect(res.breakdown).toHaveLength(1)
     expect(res.breakdown[0]?.ruleType).toBe("merchant_bonus")
+  })
+})
+
+// ---------- M7: category resolution confidence in result ----------
+
+describe("calculate — M7 categoryResolutionConfidence", () => {
+  const rule = baseRule({
+    ruleId: "card__base",
+    formula: { type: "simple_percent", rate: 0.01 },
+    confidenceScore: 0.95,
+  })
+
+  it("undefined categoryResolutionConfidence → treated as 1.0 (rule conf wins)", () => {
+    const res = calculate("card", [rule], txn({ amountHkd: 1000 }))
+    expect(res.confidenceScore).toBe(0.95)
+    expect(res.confidence).toBe("high")
+  })
+
+  it("resolver returned high confidence (0.9) → final = min(0.95, 0.9) = 0.9, high", () => {
+    const res = calculate(
+      "card",
+      [rule],
+      txn({ amountHkd: 1000, categoryResolutionConfidence: 0.9 }),
+    )
+    expect(res.confidenceScore).toBe(0.9)
+    expect(res.confidence).toBe("high")
+  })
+
+  it("resolver fallback (0.3) → final = 0.3, badge low", () => {
+    const res = calculate(
+      "card",
+      [rule],
+      txn({ amountHkd: 1000, categoryResolutionConfidence: 0.3 }),
+    )
+    expect(res.confidenceScore).toBe(0.3)
+    expect(res.confidence).toBe("low")
+  })
+
+  it("medium category conf (0.75) with high rule (0.95) → 0.75, medium", () => {
+    const res = calculate(
+      "card",
+      [rule],
+      txn({ amountHkd: 1000, categoryResolutionConfidence: 0.75 }),
+    )
+    expect(res.confidenceScore).toBe(0.75)
+    expect(res.confidence).toBe("medium")
+  })
+
+  it("no breakdown + low category conf → still high (no uncertainty to combine)", () => {
+    // Empty breakdown means no rule contributed. ruleMinConf=1.0; we still take
+    // min with categoryConf, but result has nothing for the user to read into.
+    const res = calculate(
+      "card",
+      [],
+      txn({ amountHkd: 1000, categoryResolutionConfidence: 0.3 }),
+    )
+    expect(res.rewardValueHkd).toBe(0)
+    expect(res.confidenceScore).toBe(0.3)
+  })
+})
+
+// ---------- M7 demo: caller resolves merchant, then calculator runs ----------
+
+describe("M7 end-to-end: merchantName only → resolve → calculate", () => {
+  const resolver = new HardcodedMerchantResolver()
+
+  // Citi PremierMiles-style: base earn only; tax exclusion irrelevant here.
+  const ASIA_MILE_HKD = 0.1
+  const citiPmBase = baseRule({
+    ruleId: "citi-premiermiles__base_earn",
+    ruleType: "base_earn",
+    rewardCurrencySlug: "asia_miles",
+    rewardCurrencyValueHkd: ASIA_MILE_HKD,
+    formula: { type: "points_per_hkd", points: 1, perHkd: 8, currencySlug: "asia_miles" },
+    confidenceScore: 0.9,
+  })
+
+  it("Klook HKD 5000 (only merchantName given) → 62.5 HKD, high confidence", async () => {
+    const merchantName = "Klook"
+    const resolution = await resolver.resolve(merchantName)
+    expect(resolution.categorySlug).toBe("travel_ota")
+
+    const res = calculate(
+      "citi-premiermiles",
+      [citiPmBase],
+      txn({
+        amountHkd: 5000,
+        merchantName,
+        categorySlug: resolution.categorySlug,
+        categoryResolutionConfidence: resolution.confidence,
+      }),
+    )
+
+    // 5000 / 8 = 625 miles × 0.10 = 62.5 HKD
+    expect(res.rewardValueHkd).toBeCloseTo(62.5)
+    expect(res.confidence).toBe("high") // min(0.9 rule, 0.9 category) = 0.9
+  })
+
+  it("Unknown merchant HKD 5000 → reward computed, confidence drops to low", async () => {
+    const merchantName = "Random Shop XYZ"
+    const resolution = await resolver.resolve(merchantName)
+    expect(resolution.fallbackUsed).toBe(true)
+
+    const res = calculate(
+      "citi-premiermiles",
+      [citiPmBase],
+      txn({
+        amountHkd: 5000,
+        merchantName,
+        categorySlug: resolution.categorySlug, // "unknown"
+        categoryResolutionConfidence: resolution.confidence, // 0.3
+      }),
+    )
+
+    expect(res.rewardValueHkd).toBeCloseTo(62.5) // base earn still applies
+    expect(res.confidence).toBe("low") // 0.3 category dominates
+    expect(res.confidenceScore).toBe(0.3)
   })
 })

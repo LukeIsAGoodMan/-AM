@@ -6,7 +6,7 @@ Companion to:
 - [prd.md §8](./prd.md) — high-level algorithm description.
 - Implementation lives in `src/lib/calculator/` (entry: `calculate.ts`).
 
-Updated as of: **M4** (Citi PremierMiles exclusion + stacking).
+Updated as of: **M7** (merchant resolver — category confidence in result).
 
 ---
 
@@ -36,8 +36,9 @@ The calculator is **pure** and **deterministic**. No DB access, no LLM, no clock
 ```ts
 {
   amountHkd: number               // required, non-negative
-  merchantName?: string           // M5+ feeds the merchant resolver
+  merchantName?: string           // resolved upstream by the caller
   categorySlug?: string           // canonical taxonomy slug
+  categoryResolutionConfidence?: number  // M7 — from MerchantResolver
   currency?: string               // ISO code
   countryRegion?: "HK" | "MAINLAND_CHINA" | "MACAU" | "OVERSEAS" | "UNKNOWN"
   isOnline?: boolean
@@ -45,6 +46,8 @@ The calculator is **pure** and **deterministic**. No DB access, no LLM, no clock
   transactionDate: string         // ISO yyyy-mm-dd
 }
 ```
+
+If `categorySlug` is populated, it may have come from the merchant resolver (in which case `categoryResolutionConfidence` should also be set) OR from a trusted upstream source (user-confirmed, structured input) — in which case `categoryResolutionConfidence` is left undefined and the calculator treats it as 1.0.
 
 **Derived fields the calculator computes internally**:
 
@@ -134,8 +137,8 @@ Exclusion rules NEVER appear in breakdown. Rules whose formula evaluated to 0 re
 The calculator implements PRD §8.2 in 8 sequential steps. Status legend: ✅ implemented, 🚧 partial, ⏳ deferred to a later milestone.
 
 ```
-Step 1  Merchant resolver        ⏳ M5/M7
-Step 2  Filter approved + date   🚧 status filter ✅; date range filter ⏳ M5
+Step 1  Merchant resolver        ✅ caller does it; passes confidence on txn
+Step 2  Filter approved + date   🚧 status filter ✅; date range filter ⏳ next
 Step 3  Match conditions         ✅
 Step 3b Activation gate          ✅
 Step 4  Exclusions               ✅
@@ -143,7 +146,7 @@ Step 5  Stacking                 ✅
 Step 6  Hard cap                 ✅ (basis='spending' only; 'reward'/'transaction_count' throw)
 Step 6b Tiered accrual feed      ✅
 Step 7  HKD conversion           ✅
-Step 8  Confidence aggregation   ✅
+Step 8  Confidence aggregation   ✅ folds in categoryResolutionConfidence
 ```
 
 ### 4.1 Step 2 — Status filter
@@ -260,10 +263,12 @@ Currency revaluations are handled by editing the row and re-running the seed/imp
 ### 4.9 Step 8 — Confidence aggregation
 
 ```
-if breakdown.empty:
-  confidenceScore = 1.0           // nothing to be uncertain about
-else:
-  confidenceScore = min(b.confidenceScore for b in breakdown)
+ruleMinConf =
+  1.0                              if breakdown is empty
+  min(b.confidenceScore for b in breakdown)  otherwise
+
+categoryConf = txn.categoryResolutionConfidence ?? 1.0
+confidenceScore = min(ruleMinConf, categoryConf)
 
 confidenceLevel =
   "high"   if confidenceScore >= 0.85
@@ -271,12 +276,7 @@ confidenceLevel =
   "low"    otherwise
 ```
 
-M5+ folds in `category_resolution_confidence` from the merchant resolver (PRD §8.3):
-```
-overallConf = min(min_rule_confidence, category_resolution_confidence)
-```
-
-For now, category confidence is implicitly 1.0 because the caller passes `categorySlug` directly.
+When the caller resolved the category via `MerchantResolver` and got back a low confidence (e.g., 0.3 for the unknown-merchant fallback), that bound dominates the final result — even a 0.95-confidence rule's reward is reported with overall confidence `low`. This is intentional: if we're unsure what category the txn is, we're unsure the rule even applies.
 
 ---
 

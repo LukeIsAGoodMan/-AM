@@ -10,17 +10,18 @@ import { applyRuleWithCap, type CapUsage } from "./apply-cap"
 import { applyExclusions } from "./exclusions"
 import { resolveStacking } from "./stacking"
 
-// PRD §8.2 — pure calculator. M4 scope:
-//   ✅ step 2 (filter approved; date range arrives in M5)
-//   ✅ step 3 (matches: category / online / overseas / fx)
+// PRD §8.2 — pure calculator. M7 scope:
+//   ✅ step 1  (merchant resolver — caller resolves first, passes
+//              categorySlug + categoryResolutionConfidence on txn)
+//   ✅ step 2  (filter approved; date range arrives in M5)
+//   ✅ step 3  (matches: category / online / overseas / fx)
 //   ✅ step 3b (M3 — activation/registration gate)
-//   ✅ step 4 (exclusions disable other matched candidates)
-//   ✅ step 5 (stacking groups + policy)
-//   ✅ step 6 (single-rule cap, spending basis)
+//   ✅ step 4  (exclusions disable other matched candidates)
+//   ✅ step 5  (stacking groups + policy)
+//   ✅ step 6  (single-rule cap, spending basis)
 //   ✅ step 6b (M3 — tiered formula accrual passthrough)
-//   ✅ step 7 (HKD conversion)
-//   ✅ step 8 (confidence)
-//   ⏳ step 1 (merchant resolver) — M5/M7
+//   ✅ step 7  (HKD conversion)
+//   ✅ step 8  (confidence — folds in category resolution confidence)
 
 export type UserCardContext = {
   cardId: string
@@ -79,10 +80,12 @@ export function calculate(
 
   const totalHkd = breakdown.reduce((sum, b) => sum + b.rewardHkd, 0)
 
-  const minConf =
+  const ruleMinConf =
     breakdown.length === 0
       ? 1.0
       : Math.min(...breakdown.map((b) => b.confidenceScore))
+  const categoryConf = txn.categoryResolutionConfidence ?? 1.0
+  const minConf = Math.min(ruleMinConf, categoryConf)
   const confidence: ConfidenceLevel =
     minConf >= 0.85 ? "high" : minConf >= 0.6 ? "medium" : "low"
 

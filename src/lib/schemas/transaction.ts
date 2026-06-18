@@ -16,6 +16,12 @@ export const TransactionContextSchema = z.object({
   amountHkd: z.number().nonnegative(),
   merchantName: z.string().optional(),
   categorySlug: z.string().optional(),
+  // M7: caller resolved merchantName → categorySlug via MerchantResolver.
+  // Passes the resolver's confidence here so the calculator can fold it
+  // into the result confidence (PRD §8.3). When categorySlug came from a
+  // trusted source (user-confirmed, structured input), leave undefined =
+  // calculator treats as 1.0.
+  categoryResolutionConfidence: z.number().min(0).max(1).optional(),
   currency: z.string().optional(),
   countryRegion: TransactionRegionSchema.optional(),
   isOnline: z.boolean().optional(),
