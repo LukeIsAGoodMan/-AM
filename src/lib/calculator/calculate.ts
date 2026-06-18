@@ -4,30 +4,28 @@ import type {
   RewardBreakdownItem,
   RewardResult,
 } from "@/lib/schemas/result"
-import type { ResolvedRule } from "./resolved-rule"
+import type { ResolvedCandidate, ResolvedRule } from "./resolved-rule"
 import { matches } from "./matches"
 import { applyRuleWithCap, type CapUsage } from "./apply-cap"
+import { applyExclusions } from "./exclusions"
+import { resolveStacking } from "./stacking"
 
-// PRD §8.2 — pure calculator. M3 scope:
-//   ✅ step 2 (filter approved + date range — date in M4/M5)
+// PRD §8.2 — pure calculator. M4 scope:
+//   ✅ step 2 (filter approved; date range arrives in M5)
 //   ✅ step 3 (matches: category / online / overseas / fx)
 //   ✅ step 3b (M3 — activation/registration gate)
+//   ✅ step 4 (exclusions disable other matched candidates)
+//   ✅ step 5 (stacking groups + policy)
 //   ✅ step 6 (single-rule cap, spending basis)
 //   ✅ step 6b (M3 — tiered formula accrual passthrough)
 //   ✅ step 7 (HKD conversion)
 //   ✅ step 8 (confidence)
 //   ⏳ step 1 (merchant resolver) — M5/M7
-//   ⏳ step 4 (exclusion) — M4
-//   ⏳ step 5 (stacking) — M4
-// Until M4, all matched rules remain simply additive.
 
 export type UserCardContext = {
   cardId: string
   selectedCategorySlugs?: string[]
   activatedCampaignIds?: string[]
-  // M3: rules the user has activated / registered for. A rule with either
-  // requiresActivation or requiresRegistration is skipped unless its ruleId
-  // appears here.
   activatedRuleIds?: string[]
   capUsage?: CapUsage
 }
@@ -41,33 +39,45 @@ export function calculate(
   const capUsage = userContext?.capUsage ?? {}
   const activatedRuleIds = new Set(userContext?.activatedRuleIds ?? [])
 
-  const approved = rules.filter((r) => r.status === "approved")
-
-  const breakdown: RewardBreakdownItem[] = []
-  let totalHkd = 0
-
-  for (const rule of approved) {
-    if (!matches(rule, txn)) continue
-    if (rule.requiresActivation || rule.requiresRegistration) {
-      if (!activatedRuleIds.has(rule.ruleId)) continue
+  // Step 2 + 3 + 3b: gather candidates that match the txn and pass activation gates.
+  const matched = rules.filter((r) => {
+    if (r.status !== "approved") return false
+    if (!matches(r, txn)) return false
+    if (r.requiresActivation || r.requiresRegistration) {
+      if (!activatedRuleIds.has(r.ruleId)) return false
     }
+    return true
+  })
 
+  // Step 4: exclusion pass strips bonuses whose rule_type is in an exclusion's applies_to.
+  // Exclusion rules themselves are removed before computing rewards.
+  const surviving = applyExclusions(matched)
+
+  // Step 6 + 6b + 7: compute reward for each surviving candidate.
+  const candidates: ResolvedCandidate[] = []
+  for (const rule of surviving) {
     const { rewardUnits } = applyRuleWithCap(rule, txn, capUsage)
     if (rewardUnits === 0) continue
-
     const rewardHkd = rewardUnits * rule.rewardCurrencyValueHkd
-    totalHkd += rewardHkd
-    breakdown.push({
-      ruleId: rule.ruleId,
-      ruleName: rule.ruleName,
-      ruleType: rule.ruleType,
-      rewardCurrencySlug: rule.rewardCurrencySlug,
-      rewardUnits,
-      rewardHkd,
-      sourceId: rule.sourceId,
-      confidenceScore: rule.confidenceScore,
-    })
+    candidates.push({ rule, rewardUnits, rewardHkd })
   }
+
+  // Step 5: resolve stacking groups.
+  const selected = resolveStacking(candidates)
+
+  // Step 8: aggregate.
+  const breakdown: RewardBreakdownItem[] = selected.map((c) => ({
+    ruleId: c.rule.ruleId,
+    ruleName: c.rule.ruleName,
+    ruleType: c.rule.ruleType,
+    rewardCurrencySlug: c.rule.rewardCurrencySlug,
+    rewardUnits: c.rewardUnits,
+    rewardHkd: c.rewardHkd,
+    sourceId: c.rule.sourceId,
+    confidenceScore: c.rule.confidenceScore,
+  }))
+
+  const totalHkd = breakdown.reduce((sum, b) => sum + b.rewardHkd, 0)
 
   const minConf =
     breakdown.length === 0

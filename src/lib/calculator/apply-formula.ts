@@ -18,10 +18,14 @@ export function applyFormula(
   switch (formula.type) {
     case "simple_percent":
       return txn.amountHkd * formula.rate
+    case "points_per_hkd":
+      return (txn.amountHkd / formula.perHkd) * formula.points
     case "tiered_percent":
       return applyTieredPercent(formula.tiers, txn.amountHkd, accrualUsedHkd)
     case "tiered_points":
       return applyTieredPoints(formula.tiers, txn.amountHkd, accrualUsedHkd)
+    case "no_reward":
+      return 0
   }
 }
 

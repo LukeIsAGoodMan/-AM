@@ -21,7 +21,9 @@ import {
 //   - Tier accrual is INSIDE reward_formula_payload (Zod tiered_percent /
 //     tiered_points variants) — no DB column needed for accrual_period.
 //
-// M4 will add: applies_to, stacking_policy, exclusive_group.
+// M4 additions:
+//   - reward_rules: applies_to text[] (exclusion scope), stacking_policy,
+//                   exclusive_group, priority
 
 export const issuers = pgTable("issuers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -156,6 +158,17 @@ export const rewardRules = pgTable("reward_rules", {
   requiresRegistration: boolean("requires_registration")
     .default(false)
     .notNull(),
+
+  // M4: stacking + exclusion (PRD §8.2 steps 4 + 5).
+  // - applies_to: for rule_type='exclusion', the list of OTHER rule_types
+  //   this exclusion disables. base_earn NOT in the list means base still earns.
+  // - stacking_policy: how this rule interacts with others in the same
+  //   exclusive_group. 'additive' is the safe default.
+  // - exclusive_group: rules sharing a group key obey the policy together.
+  appliesTo: text("applies_to").array(),
+  stackingPolicy: text("stacking_policy").default("additive").notNull(),
+  exclusiveGroup: text("exclusive_group"),
+  priority: integer("priority").default(100).notNull(),
 
   // M2: caps (single-rule scope; M4 adds cap_scope + cap_shared_group for stacking)
   capAmountHkd: numeric("cap_amount_hkd", { precision: 14, scale: 2 }),

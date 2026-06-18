@@ -21,6 +21,10 @@ const baseRule = (
   requiresRegistration: false,
   accrualKey: overrides.ruleId,
   cap: null,
+  appliesTo: null,
+  stackingPolicy: "additive",
+  exclusiveGroup: null,
+  priority: 100,
   sourceId: "stub-source-id",
   confidenceScore: 0.9,
   ...overrides,
@@ -336,5 +340,219 @@ describe("calculate — M3 tiered_percent (Hang Seng MPOWER-style)", () => {
     )
     expect(denied.rewardValueHkd).toBe(0)
     expect(allowed.rewardValueHkd).toBe(16)
+  })
+})
+
+// ---------- M4: exclusion + stacking (Citi PremierMiles) ----------
+
+describe("calculate — M4 exclusion + stacking", () => {
+  // Asia Miles valued at HKD 0.10 per mile in M4 seed.
+  const ASIA_MILE_HKD = 0.1
+
+  const citiPmBase = baseRule({
+    ruleId: "citi-premiermiles__base_earn",
+    ruleName: "Citi PM base (HK$8 = 1 mile)",
+    ruleType: "base_earn",
+    rewardCurrencySlug: "asia_miles",
+    rewardCurrencyValueHkd: ASIA_MILE_HKD,
+    formula: {
+      type: "points_per_hkd",
+      points: 1,
+      perHkd: 8,
+      currencySlug: "asia_miles",
+    },
+    priority: 100,
+  })
+
+  const citiPmFxBonus = baseRule({
+    ruleId: "citi-premiermiles__fx_bonus",
+    ruleName: "Citi PM FX bonus (additive)",
+    ruleType: "foreign_currency_bonus",
+    rewardCurrencySlug: "asia_miles",
+    rewardCurrencyValueHkd: ASIA_MILE_HKD,
+    formula: {
+      type: "points_per_hkd",
+      points: 1,
+      perHkd: 8,
+      currencySlug: "asia_miles",
+    },
+    isForeignCurrency: true,
+    priority: 90,
+  })
+
+  const citiPmTaxExclusion = baseRule({
+    ruleId: "citi-premiermiles__tax_exclusion",
+    ruleName: "Tax/government — bonus excluded",
+    ruleType: "exclusion",
+    rewardCurrencySlug: "asia_miles",
+    rewardCurrencyValueHkd: ASIA_MILE_HKD,
+    formula: {
+      type: "no_reward",
+      reason: "Tax category does not earn bonus miles.",
+    },
+    categorySlug: "tax_government",
+    appliesTo: [
+      "category_bonus",
+      "online_bonus",
+      "overseas_bonus",
+      "foreign_currency_bonus",
+      "campaign_bonus",
+      "merchant_bonus",
+    ],
+    priority: 50,
+  })
+
+  const rules = [citiPmBase, citiPmFxBonus, citiPmTaxExclusion]
+
+  it("local HKD 1000 → base only (125 miles × 0.10 = 12.5 HKD)", () => {
+    const res = calculate(
+      "citi-premiermiles",
+      rules,
+      txn({
+        amountHkd: 1000,
+        categorySlug: "dining_local",
+        countryRegion: "HK",
+        isForeignCurrency: false,
+      }),
+    )
+    expect(res.rewardValueHkd).toBeCloseTo(12.5)
+    expect(res.breakdown).toHaveLength(1)
+    expect(res.breakdown[0]?.ruleType).toBe("base_earn")
+  })
+
+  it("foreign currency HKD 4000 → base + FX bonus additive (1000 miles = 100 HKD)", () => {
+    // base: 4000/8 = 500 miles; FX bonus: 4000/8 = 500 miles; total 1000 × 0.10 = 100
+    const res = calculate(
+      "citi-premiermiles",
+      rules,
+      txn({
+        amountHkd: 4000,
+        categorySlug: "general_overseas",
+        countryRegion: "OVERSEAS",
+        isForeignCurrency: true,
+      }),
+    )
+    expect(res.rewardValueHkd).toBeCloseTo(100)
+    expect(res.breakdown).toHaveLength(2)
+    const types = res.breakdown.map((b) => b.ruleType).sort()
+    expect(types).toEqual(["base_earn", "foreign_currency_bonus"])
+  })
+
+  it("★ PRD §8.4 — tax HKD 10000 → base earns, bonus excluded", () => {
+    // Even with the tax exclusion matching (txn.categorySlug = tax_government),
+    // base_earn is NOT in appliesTo, so it still earns 10000/8 = 1250 miles = 125 HKD.
+    const res = calculate(
+      "citi-premiermiles",
+      rules,
+      txn({
+        amountHkd: 10000,
+        categorySlug: "tax_government",
+        countryRegion: "HK",
+        isForeignCurrency: false,
+      }),
+    )
+    expect(res.rewardValueHkd).toBeCloseTo(125)
+    expect(res.breakdown).toHaveLength(1)
+    expect(res.breakdown[0]?.ruleType).toBe("base_earn")
+  })
+
+  it("tax + foreign currency → base only (exclusion catches FX bonus too)", () => {
+    // FX bonus rule_type is in appliesTo, so it gets disabled even though
+    // isForeignCurrency=true matches. Base earn survives.
+    const res = calculate(
+      "citi-premiermiles",
+      rules,
+      txn({
+        amountHkd: 8000,
+        categorySlug: "tax_government",
+        countryRegion: "OVERSEAS",
+        isForeignCurrency: true,
+      }),
+    )
+    expect(res.rewardValueHkd).toBeCloseTo(100) // 8000/8 = 1000 miles × 0.10
+    expect(res.breakdown).toHaveLength(1)
+    expect(res.breakdown[0]?.ruleType).toBe("base_earn")
+  })
+
+  it("exclusion rule itself never appears in breakdown", () => {
+    const res = calculate(
+      "citi-premiermiles",
+      rules,
+      txn({
+        amountHkd: 5000,
+        categorySlug: "tax_government",
+        countryRegion: "HK",
+      }),
+    )
+    expect(res.breakdown.find((b) => b.ruleType === "exclusion")).toBeUndefined()
+  })
+})
+
+// ---------- M4: stacking policies ----------
+
+describe("calculate — M4 stacking policies", () => {
+  const base = baseRule({
+    ruleId: "card__base",
+    ruleType: "base_earn",
+    formula: { type: "simple_percent", rate: 0.005 },
+    priority: 100,
+  })
+
+  it("max_only_in_group: picks the highest reward in the group", () => {
+    const groupA = baseRule({
+      ruleId: "card__bonus_a",
+      ruleType: "category_bonus",
+      formula: { type: "simple_percent", rate: 0.03 },
+      categorySlug: "online_local",
+      stackingPolicy: "max_only_in_group",
+      exclusiveGroup: "card__online_group",
+      priority: 80,
+    })
+    const groupB = baseRule({
+      ruleId: "card__bonus_b",
+      ruleType: "online_bonus",
+      formula: { type: "simple_percent", rate: 0.05 },
+      categorySlug: "online_local",
+      stackingPolicy: "max_only_in_group",
+      exclusiveGroup: "card__online_group",
+      priority: 80,
+    })
+    const res = calculate(
+      "card",
+      [base, groupA, groupB],
+      txn({
+        amountHkd: 1000,
+        categorySlug: "online_local",
+        isOnline: null as unknown as boolean,
+      }),
+    )
+    // base 0.5% = 5; group picks max(30, 50) = 50; total 55
+    expect(res.rewardValueHkd).toBe(55)
+    expect(res.breakdown.find((b) => b.ruleId === "card__bonus_a")).toBeUndefined()
+    expect(res.breakdown.find((b) => b.ruleId === "card__bonus_b")).toBeDefined()
+  })
+
+  it("replaces_base: knocks out base_earn already in selected", () => {
+    const replacer = baseRule({
+      ruleId: "card__merchant_bonus",
+      ruleType: "merchant_bonus",
+      formula: { type: "simple_percent", rate: 0.08 },
+      categorySlug: "merchant_specific",
+      stackingPolicy: "replaces_base",
+      // Higher priority number = iterated later → base is added first, then replaced.
+      priority: 150,
+    })
+    const res = calculate(
+      "card",
+      [base, replacer],
+      txn({
+        amountHkd: 1000,
+        categorySlug: "merchant_specific",
+      }),
+    )
+    // base would have been 5; replaced by merchant 80
+    expect(res.rewardValueHkd).toBe(80)
+    expect(res.breakdown).toHaveLength(1)
+    expect(res.breakdown[0]?.ruleType).toBe("merchant_bonus")
   })
 })

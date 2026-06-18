@@ -9,16 +9,19 @@ import {
 } from "./schema/catalog"
 import { seedCategories } from "./seed-categories"
 
-// M3 seed: 3 issuers, 1 currency, 30+ categories, 3 sources, 3 cards, 4 rules.
-//   Citi Cash Back  (M1) — flat 1.2% base earn
-//   HSBC Red        (M2) — 0.4% base + 4% online_local capped at HKD 100k/yr
-//   Hang Seng MPOWER(M3) — tiered_percent monthly:
-//                          [0, 4000) @ 0.4%, [4000, ∞) @ 5%
-//                          requires_registration=true
+// M4 seed: 4 issuers, 2 currencies, 30+ categories, 4 sources, 4 cards, 7 rules.
+//   Citi Cash Back     (M1) — flat 1.2% base earn
+//   HSBC Red           (M2) — 0.4% base + 4% online_local capped at HKD 100k/yr
+//   Hang Seng MPOWER   (M3) — tiered_percent monthly:
+//                             [0, 4000) @ 0.4%, [4000, ∞) @ 5%
+//                             requires_registration=true
+//   Citi PremierMiles  (M4) — points_per_hkd base (HK$8/mile) +
+//                             FX bonus (HK$8/mile additional on FX, additive) +
+//                             tax exclusion (applies_to bonuses, NOT base_earn)
 //
 // Roadmap M3 named HSBC EveryMile; real EveryMile is category-based
 // (HK$4/HK$8 = 1 mile by online/overseas), not monthly tier. MPOWER is
-// the closer stress fit. Both are simplifications of real products.
+// the closer stress fit. All cards are simplifications of real products.
 //
 // Idempotent — re-running is safe.
 // YAML-driven import replaces this script in M6.
@@ -42,6 +45,27 @@ export async function seed(db: DB) {
           type: "cashback",
           baseValueHkd: "1.000000",
           valuationNote: "1 unit = HKD 1.00",
+        })
+        .returning({ id: rewardCurrencies.id }),
+  )
+
+  const asiaMiles = await upsertById(
+    () =>
+      db
+        .select({ id: rewardCurrencies.id })
+        .from(rewardCurrencies)
+        .where(eq(rewardCurrencies.slug, "asia_miles")),
+    () =>
+      db
+        .insert(rewardCurrencies)
+        .values({
+          slug: "asia_miles",
+          nameEn: "Asia Miles",
+          nameZh: "亞洲萬里通",
+          type: "miles",
+          baseValueHkd: "0.100000",
+          valuationNote:
+            "1 mile ≈ HKD 0.10 — conservative estimate; long-haul J redemptions can yield 0.15–0.25.",
         })
         .returning({ id: rewardCurrencies.id }),
   )
@@ -365,10 +389,172 @@ export async function seed(db: DB) {
         .returning({ id: rewardRules.id }),
   )
 
+  // ---------- Citi PremierMiles (M4 adversarial: exclusion + stacking) ----------
+
+  const citiPmCategoryTaxId = categoryIds.get("tax_government")
+  if (!citiPmCategoryTaxId) {
+    throw new Error("tax_government category not seeded")
+  }
+
+  const citiPm = await upsertById(
+    () =>
+      db
+        .select({ id: cards.id })
+        .from(cards)
+        .where(eq(cards.slug, "citi-premiermiles")),
+    () =>
+      db
+        .insert(cards)
+        .values({
+          issuerId: citi,
+          slug: "citi-premiermiles",
+          productFamily: "Citi PremierMiles",
+          cardNameEn: "Citi PremierMiles Card",
+          cardNameZh: "Citi PremierMiles 信用卡",
+          network: "Visa",
+          cardLevel: "platinum",
+          status: "active",
+          officialUrl:
+            "https://www.citibank.com.hk/english/credit-cards/premiermiles-card/index.htm",
+          notes:
+            "M4 simplification — base 1 mile / HK$8 + additive FX bonus + tax exclusion (bonuses only). Real card has cap on miles bonus and AsiaMiles redemption rules; added in M9.",
+        })
+        .returning({ id: cards.id }),
+  )
+
+  const citiPmSource = await upsertById(
+    () =>
+      db
+        .select({ id: sourceDocuments.id })
+        .from(sourceDocuments)
+        .where(eq(sourceDocuments.slug, "citi-premiermiles-official-page")),
+    () =>
+      db
+        .insert(sourceDocuments)
+        .values({
+          slug: "citi-premiermiles-official-page",
+          issuerId: citi,
+          cardId: citiPm,
+          sourceType: "official_page",
+          sourcePriority: 2,
+          title: "Citi PremierMiles Card — official product page",
+          url: "https://www.citibank.com.hk/english/credit-cards/premiermiles-card/index.htm",
+          language: "mixed",
+          status: "active",
+          notes:
+            "M4 placeholder source. Replace with real T&C PDF in M9.",
+        })
+        .returning({ id: sourceDocuments.id }),
+  )
+
+  await upsertById(
+    () =>
+      db
+        .select({ id: rewardRules.id })
+        .from(rewardRules)
+        .where(eq(rewardRules.slug, "citi-premiermiles__base_earn")),
+    () =>
+      db
+        .insert(rewardRules)
+        .values({
+          cardId: citiPm,
+          slug: "citi-premiermiles__base_earn",
+          ruleName: "Base earn (HK$8 = 1 mile)",
+          ruleType: "base_earn",
+          status: "approved",
+          rewardFormulaType: "points_per_hkd",
+          rewardFormulaPayload: {
+            type: "points_per_hkd",
+            points: 1,
+            perHkd: 8,
+            currencySlug: "asia_miles",
+          },
+          rewardCurrencyId: asiaMiles,
+          sourceId: citiPmSource,
+          confidenceScore: "0.900",
+          priority: 100,
+        })
+        .returning({ id: rewardRules.id }),
+  )
+
+  await upsertById(
+    () =>
+      db
+        .select({ id: rewardRules.id })
+        .from(rewardRules)
+        .where(eq(rewardRules.slug, "citi-premiermiles__fx_bonus")),
+    () =>
+      db
+        .insert(rewardRules)
+        .values({
+          cardId: citiPm,
+          slug: "citi-premiermiles__fx_bonus",
+          ruleName: "Foreign currency bonus (additive)",
+          ruleType: "foreign_currency_bonus",
+          status: "approved",
+          rewardFormulaType: "points_per_hkd",
+          rewardFormulaPayload: {
+            type: "points_per_hkd",
+            points: 1,
+            perHkd: 8,
+            currencySlug: "asia_miles",
+          },
+          rewardCurrencyId: asiaMiles,
+          isForeignCurrency: true,
+          sourceId: citiPmSource,
+          confidenceScore: "0.850",
+          stackingPolicy: "additive",
+          priority: 90,
+          notes:
+            "Additive on top of base earn — FX txn earns 1/8 (base) + 1/8 (FX) = 1/4 mile per HKD effective rate.",
+        })
+        .returning({ id: rewardRules.id }),
+  )
+
+  await upsertById(
+    () =>
+      db
+        .select({ id: rewardRules.id })
+        .from(rewardRules)
+        .where(eq(rewardRules.slug, "citi-premiermiles__tax_exclusion")),
+    () =>
+      db
+        .insert(rewardRules)
+        .values({
+          cardId: citiPm,
+          slug: "citi-premiermiles__tax_exclusion",
+          ruleName: "Tax / government — bonus excluded",
+          ruleType: "exclusion",
+          status: "approved",
+          rewardFormulaType: "no_reward",
+          rewardFormulaPayload: {
+            type: "no_reward",
+            reason: "Tax / government category does not earn bonus miles.",
+          },
+          rewardCurrencyId: asiaMiles,
+          categoryId: citiPmCategoryTaxId,
+          appliesTo: [
+            "category_bonus",
+            "online_bonus",
+            "overseas_bonus",
+            "foreign_currency_bonus",
+            "campaign_bonus",
+            "merchant_bonus",
+          ],
+          sourceId: citiPmSource,
+          confidenceScore: "0.850",
+          priority: 50,
+          notes:
+            "base_earn deliberately NOT in applies_to: tax payments still earn the basic 1/8 mile per HKD — PRD §8.4 canonical case.",
+        })
+        .returning({ id: rewardRules.id }),
+  )
+
   return {
     citiCashBackId: citiCashBack,
     hsbcRedId: hsbcRed,
     hangSengMpowerId: hsMpower,
+    citiPmId: citiPm,
   }
 }
 

@@ -1,7 +1,8 @@
 import { z } from "zod"
 
-// PRD §7. M3 ships with: simple_percent, tiered_percent, tiered_points.
-// M4 adds: fixed_bonus, first_n_transactions_bonus, no_reward, custom_note.
+// PRD §7. M4 ships with:
+//   simple_percent, tiered_percent, tiered_points, points_per_hkd, no_reward
+// M5+ adds: fixed_bonus, first_n_transactions_bonus, custom_note.
 // `custom_note` exists as an escape hatch but is counted; >10% usage = redesign.
 
 export const AccrualPeriodSchema = z.enum([
@@ -33,6 +34,12 @@ export const RewardFormulaSchema = z.discriminatedUnion("type", [
     rate: z.number().min(0).max(1),
   }),
   z.object({
+    type: z.literal("points_per_hkd"),
+    points: z.number().nonnegative(),
+    perHkd: z.number().positive(),
+    currencySlug: z.string(),
+  }),
+  z.object({
     type: z.literal("tiered_percent"),
     accrualPeriod: AccrualPeriodSchema,
     tiers: z.array(TierBracketSchema).min(1),
@@ -43,14 +50,20 @@ export const RewardFormulaSchema = z.discriminatedUnion("type", [
     currencySlug: z.string(),
     tiers: z.array(TierBracketPointsSchema).min(1),
   }),
+  z.object({
+    type: z.literal("no_reward"),
+    reason: z.string().optional(),
+  }),
 ])
 
 export type RewardFormula = z.infer<typeof RewardFormulaSchema>
 
 export const RewardFormulaTypes = [
   "simple_percent",
+  "points_per_hkd",
   "tiered_percent",
   "tiered_points",
+  "no_reward",
 ] as const satisfies ReadonlyArray<RewardFormula["type"]>
 
 export type RewardFormulaType = (typeof RewardFormulaTypes)[number]

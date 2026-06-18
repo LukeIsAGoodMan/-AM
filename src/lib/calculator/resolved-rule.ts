@@ -2,8 +2,12 @@ import type { RewardFormula } from "@/lib/schemas/formula"
 
 // PRD §8.5 — ResolvedRule is the seam between Layer 2 (schema) and Layer 4 (compute).
 // DB rows are mapped into ResolvedRule before the calculator touches them.
-// When schema evolves (M3+ tier accrual, M4 stacking), only the mapping changes;
-// the calculator continues to operate on ResolvedRule.
+// When schema evolves, only the mapping changes; the calculator stays.
+
+export type StackingPolicy =
+  | "additive"
+  | "max_only_in_group"
+  | "replaces_base"
 
 export type ResolvedRule = {
   ruleId: string
@@ -22,30 +26,43 @@ export type ResolvedRule = {
   isForeignCurrency: boolean | null
 
   // M3: opt-in gating. Calculator skips this rule unless the rule_id appears
-  // in user_context.activatedRuleIds. Two flags carry semantic intent in the
-  // data; the calculator treats them identically.
+  // in user_context.activatedRuleIds.
   requiresActivation: boolean
   requiresRegistration: boolean
 
-  // M3: accrual key for tiered formulas. Where to look up "spend already
-  // accumulated in this period under this rule". Defaults to ruleId in
-  // mapping code; M4 grouped tiers may share a key across rules.
+  // M3: accrual key for tiered formulas. Defaults to ruleId in mapping code;
+  // M4 grouped tiers may share a key across rules.
   accrualKey: string
 
-  // M2: single-rule cap. M4 will add capUsageKey override for shared groups.
+  // M2: single-rule cap.
   cap: ResolvedCap | null
+
+  // M4: exclusion + stacking (PRD §8.2 steps 4–5).
+  // - appliesTo: for ruleType='exclusion', the rule_types this exclusion
+  //   disables. null on non-exclusion rules.
+  // - stackingPolicy: 'additive' (default), 'max_only_in_group', 'replaces_base'.
+  // - exclusiveGroup: rules sharing a group key obey the policy together.
+  // - priority: groups iterate in ascending priority; lower = first.
+  appliesTo: string[] | null
+  stackingPolicy: StackingPolicy
+  exclusiveGroup: string | null
+  priority: number
 
   sourceId: string | null
   confidenceScore: number
 }
 
 export type ResolvedCap = {
-  // Key into UserCardContext.capUsage. Defaults to ruleId for single-rule caps;
-  // M4 grouped caps will override with a shared group key.
   usageKey: string
   basis: "spending" | "reward" | "transaction_count"
-  // Period is informational for M2 (we trust the caller's capUsage already accounts for the period).
   period: "transaction" | "day" | "month" | "quarter" | "year" | "campaign"
-  amountHkd: number | null // populated when basis='spending'
-  rewardAmount: number | null // populated when basis='reward' (in reward currency units)
+  amountHkd: number | null
+  rewardAmount: number | null
+}
+
+// One survivor of matches+exclusion+formula computation. Stacking operates on these.
+export type ResolvedCandidate = {
+  rule: ResolvedRule
+  rewardUnits: number
+  rewardHkd: number
 }
