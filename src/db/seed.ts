@@ -7,26 +7,17 @@ import {
   rewardRules,
   sourceDocuments,
 } from "./schema/catalog"
+import { seedCategories } from "./seed-categories"
 
-// M1 seed: 1 issuer, 1 currency, 1 source, 1 card, 1 rule.
-// Idempotent — re-running is safe; on slug conflict we look up the existing row.
+// M2 seed: 2 issuers, 1 currency, 30+ categories, 2 sources, 2 cards, 3 rules.
+//   Citi Cash Back (carried from M1) — flat 1.2% base earn
+//   HSBC Red       — 0.4% base earn + 4% online_local capped at HKD 100k/yr
+//
+// Idempotent — re-running is safe.
 // YAML-driven import replaces this script in M6.
 
 export async function seed(db: DB) {
-  const citi = await upsertById(
-    () =>
-      db.select({ id: issuers.id }).from(issuers).where(eq(issuers.slug, "citi")),
-    () =>
-      db
-        .insert(issuers)
-        .values({
-          slug: "citi",
-          nameEn: "Citi",
-          nameZh: "花旗",
-          websiteUrl: "https://www.citibank.com.hk",
-        })
-        .returning({ id: issuers.id }),
-  )
+  const categoryIds = await seedCategories(db)
 
   const hkdCashback = await upsertById(
     () =>
@@ -48,28 +39,21 @@ export async function seed(db: DB) {
         .returning({ id: rewardCurrencies.id }),
   )
 
-  const citiCashBackSource = await upsertById(
+  // ---------- Citi Cash Back (M1) ----------
+
+  const citi = await upsertById(
+    () =>
+      db.select({ id: issuers.id }).from(issuers).where(eq(issuers.slug, "citi")),
     () =>
       db
-        .select({ id: sourceDocuments.id })
-        .from(sourceDocuments)
-        .where(eq(sourceDocuments.slug, "citi-cash-back-official-page")),
-    () =>
-      db
-        .insert(sourceDocuments)
+        .insert(issuers)
         .values({
-          slug: "citi-cash-back-official-page",
-          issuerId: citi,
-          sourceType: "official_page",
-          sourcePriority: 2,
-          title: "Citi Cash Back Card — official product page",
-          url: "https://www.citibank.com.hk/english/credit-cards/cash-back-card/index.htm",
-          language: "mixed",
-          status: "active",
-          notes:
-            "M1 placeholder source. Replace with real T&C PDF in M2/M9.",
+          slug: "citi",
+          nameEn: "Citi",
+          nameZh: "花旗",
+          websiteUrl: "https://www.citibank.com.hk",
         })
-        .returning({ id: sourceDocuments.id }),
+        .returning({ id: issuers.id }),
   )
 
   const citiCashBack = await upsertById(
@@ -93,9 +77,34 @@ export async function seed(db: DB) {
           officialUrl:
             "https://www.citibank.com.hk/english/credit-cards/cash-back-card/index.htm",
           notes:
-            "M1 simplification: modeled as flat 1.2% base earn. Real card has tiered rates added in M2/M3.",
+            "M1 simplification: modeled as flat 1.2% base earn. Real card has tiered rates added in M3.",
         })
         .returning({ id: cards.id }),
+  )
+
+  const citiCashBackSource = await upsertById(
+    () =>
+      db
+        .select({ id: sourceDocuments.id })
+        .from(sourceDocuments)
+        .where(eq(sourceDocuments.slug, "citi-cash-back-official-page")),
+    () =>
+      db
+        .insert(sourceDocuments)
+        .values({
+          slug: "citi-cash-back-official-page",
+          issuerId: citi,
+          cardId: citiCashBack,
+          sourceType: "official_page",
+          sourcePriority: 2,
+          title: "Citi Cash Back Card — official product page",
+          url: "https://www.citibank.com.hk/english/credit-cards/cash-back-card/index.htm",
+          language: "mixed",
+          status: "active",
+          notes:
+            "M1 placeholder source. Replace with real T&C PDF in M9.",
+        })
+        .returning({ id: sourceDocuments.id }),
   )
 
   await upsertById(
@@ -124,12 +133,128 @@ export async function seed(db: DB) {
         .returning({ id: rewardRules.id }),
   )
 
-  return {
-    issuerId: citi,
-    rewardCurrencyId: hkdCashback,
-    sourceId: citiCashBackSource,
-    cardId: citiCashBack,
-  }
+  // ---------- HSBC Red (M2) ----------
+
+  const hsbc = await upsertById(
+    () =>
+      db.select({ id: issuers.id }).from(issuers).where(eq(issuers.slug, "hsbc")),
+    () =>
+      db
+        .insert(issuers)
+        .values({
+          slug: "hsbc",
+          nameEn: "HSBC",
+          nameZh: "滙豐",
+          websiteUrl: "https://www.hsbc.com.hk",
+        })
+        .returning({ id: issuers.id }),
+  )
+
+  const hsbcRed = await upsertById(
+    () =>
+      db.select({ id: cards.id }).from(cards).where(eq(cards.slug, "hsbc-red")),
+    () =>
+      db
+        .insert(cards)
+        .values({
+          issuerId: hsbc,
+          slug: "hsbc-red",
+          productFamily: "HSBC Red",
+          cardNameEn: "HSBC Red Credit Card",
+          cardNameZh: "HSBC Red 信用卡",
+          network: "Visa",
+          cardLevel: "platinum",
+          status: "active",
+          officialUrl:
+            "https://www.hsbc.com.hk/credit-cards/products/red/",
+          notes:
+            "M2 modeling: 0.4% base + 4% online_local up to HKD 100k/yr eligible spend. Real exclusions added in M4.",
+        })
+        .returning({ id: cards.id }),
+  )
+
+  const hsbcRedSource = await upsertById(
+    () =>
+      db
+        .select({ id: sourceDocuments.id })
+        .from(sourceDocuments)
+        .where(eq(sourceDocuments.slug, "hsbc-red-official-page")),
+    () =>
+      db
+        .insert(sourceDocuments)
+        .values({
+          slug: "hsbc-red-official-page",
+          issuerId: hsbc,
+          cardId: hsbcRed,
+          sourceType: "official_page",
+          sourcePriority: 2,
+          title: "HSBC Red Credit Card — official product page",
+          url: "https://www.hsbc.com.hk/credit-cards/products/red/",
+          language: "mixed",
+          status: "active",
+          notes:
+            "M2 placeholder source. Replace with real T&C PDF in M9.",
+        })
+        .returning({ id: sourceDocuments.id }),
+  )
+
+  await upsertById(
+    () =>
+      db
+        .select({ id: rewardRules.id })
+        .from(rewardRules)
+        .where(eq(rewardRules.slug, "hsbc-red__base_earn")),
+    () =>
+      db
+        .insert(rewardRules)
+        .values({
+          cardId: hsbcRed,
+          slug: "hsbc-red__base_earn",
+          ruleName: "Base earn (0.4%)",
+          ruleType: "base_earn",
+          status: "approved",
+          rewardFormulaType: "simple_percent",
+          rewardFormulaPayload: { type: "simple_percent", rate: 0.004 },
+          rewardCurrencyId: hkdCashback,
+          sourceId: hsbcRedSource,
+          confidenceScore: "0.900",
+        })
+        .returning({ id: rewardRules.id }),
+  )
+
+  await upsertById(
+    () =>
+      db
+        .select({ id: rewardRules.id })
+        .from(rewardRules)
+        .where(eq(rewardRules.slug, "hsbc-red__online_local_bonus")),
+    () =>
+      db
+        .insert(rewardRules)
+        .values({
+          cardId: hsbcRed,
+          slug: "hsbc-red__online_local_bonus",
+          ruleName: "Online local 4% bonus",
+          ruleType: "online_bonus",
+          status: "approved",
+          rewardFormulaType: "simple_percent",
+          rewardFormulaPayload: { type: "simple_percent", rate: 0.04 },
+          rewardCurrencyId: hkdCashback,
+          categoryId: categoryIds.get("online_local"),
+          isOnline: true,
+          isOverseas: false,
+          capAmountHkd: "100000.00",
+          capPeriod: "year",
+          capBasis: "spending",
+          sourceId: hsbcRedSource,
+          confidenceScore: "0.850",
+          notes:
+            "Tax / e-wallet topup exclusions arrive in M4 (exclusion rules with applies_to).",
+        })
+        .returning({ id: rewardRules.id }),
+  )
+
+  return { citiCashBackId: citiCashBack, hsbcRedId: hsbcRed }
 }
 
 async function upsertById(
