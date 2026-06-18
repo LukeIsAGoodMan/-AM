@@ -189,7 +189,9 @@ Each: base earn + 1–2 bonus + 1 exclusion + welcome offer.
 
 **Don't**: don't chase ZA Card and the 10th card. 8 accurate beats 10 sloppy.
 
-**Bonus reference**: the user's existing `HK_credit_card_master_with_best_use_case.xlsx` (in `-AM/` root) can seed names/fees/networks. Hand-verify rules — don't trust the spreadsheet on logic.
+**Bonus reference**: the user's existing `HK_credit_card_master_with_best_use_case.xlsx` (74 cards across 12 issuers) can seed names/fees/networks/welcome-offer skeletons. Hand-verify rules — do not trust the spreadsheet on rule logic.
+
+**Optional M9.5 (recommended)**: write `scripts/seed-from-xlsx.ts` to insert all 74 cards as `status='draft'` (metadata + qualitative summary + welcome offer skeleton). This makes Phase 2 start with 66 cards in the draft pool instead of zero. Cost ~2 hours, saves ~30 hours later. Do NOT promote draft → approved in MVP — those 66 are Phase 2's input pool, not MVP output.
 
 ---
 
@@ -356,3 +358,76 @@ Per PRD §20:
 ```
 
 If this demo runs end-to-end without intervention, MVP is shipped. Layer 3/5 v2 / 6 v2 / 7 / 8 can start.
+
+---
+
+## Beyond MVP: Phase 2 — Multi-Source Extraction + Cross-Check
+
+See [prd.md §22](./prd.md#22-phase-2-multi-source-extraction--cross-check-post-mvp) for the design. Phase 2 lifts coverage from 8–10 cards → ~25 cards without sacrificing the source-backed accuracy bar.
+
+### Why Phase 2 (not "add 30 more YAML cards")
+
+Hand YAML scales to ~25 cards comfortably. Reaching the ~75 card universe needs LLM-assisted extraction. But "LLM extracts → DB" alone is dangerous on financial data. So Phase 2 = **multi-source scan → per-source claims → cross-check aggregation → human review of conflicts/agreements → approved rules**.
+
+### Design principles (added to PRD §5)
+
+1. **Multi-source by default** — every rule anchored to ≥1 source; ideally ≥2 for high-confidence.
+2. **Cross-check before approve** — agreement boosts confidence, disagreement creates a review task.
+3. **LLM extracts; humans approve** — LLM never writes to `reward_rules` directly.
+
+### Phase 2 milestones (sized for sit-down PRs like MVP)
+
+```
+P1  Migration: source_claims / extraction_runs /        (1d)
+    cross_check_groups / review_tasks / reward_rule_sources
+P2  Extraction prompt v1 (Claude Opus 4.7,              (1.5d)
+    schema-guided, one chunk → many claims)
+P3  Extraction runner: source_chunks → source_claims    (1d)
+P4  Cross-check aggregator + review_task auto-gen       (1.5d)
+P5  /review queue page (list + filters)                 (1d)
+P6  /review/[task] detail (side-by-side source vs claim,(1.5d)
+    approve / edit-and-approve / reject / mark-conflict)
+P7  Auto-create reward_rule from approved claim         (1d)
+    cluster + reward_rule_sources join
+P8  Multi-source scan: fetch official + 2 competitors   (1.5d)
+    for one card → run extraction → produce 6-9 claims
+P9  Bulk run P8 across 10 more cards                    (2d)
+    → demo: at least 1 real conflict detected and resolved
+P10 Polish: extraction cost dashboard, claim provenance (1d)
+    on rule detail page, archive superseded claims
+```
+
+Total: ~12–13 sit-downs ≈ 3 working weeks for one person.
+
+### Phase 2 success criteria (mirrors PRD §22.10)
+
+1. ≥25 cards `approved` (up from 10).
+2. ≥10 more in `single_source` or `conflict` review state.
+3. End-to-end extraction demo runs: open source → click Extract → claims appear in `/review` → approve → calculator output updates.
+4. At least 1 cross-source conflict has been detected and resolved through the UI.
+5. `/dashboard` shows extraction cost + claim review backlog.
+
+### Tooling reservations already in MVP (so Phase 2 isn't from-scratch)
+
+- `source_documents.extracted_text` + `source_chunks` populated from M8.
+- `db/schema/extraction.ts` reserved as empty namespace.
+- `reward_rules.confidence_score` semantics already match the cross-check aggregator output.
+- Calculator already operates on `ResolvedRule`, so swapping in cross-check-derived rules is invisible to it.
+
+### What is still NOT in Phase 2
+
+- Wallet Mode / Plan Mode (Phase 3).
+- Public-facing UI (Phase 3).
+- Automatic re-crawl + freshness alerts (Phase 4 — when stale data starts mattering).
+- Browser extension (Phase 4+).
+- Bank account connection (Phase 5+).
+
+---
+
+## Phase 3+ teaser (not designed yet)
+
+- **Phase 3**: Public Wallet Mode beta. User submits owned cards + a transaction → ranking. Captures `merchant_datapoints` from real users.
+- **Phase 4**: Plan Mode (spending profile → card recommendations). Re-crawl scheduler for freshness.
+- **Phase 5**: Agent orchestration (LLM calls calculator + RAG + simulation as tools).
+
+Designs land when MVP + Phase 2 are real, not before.

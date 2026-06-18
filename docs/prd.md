@@ -980,6 +980,10 @@ Pages:
 - A future migration adds `embedding vector(1536)` + builds index.
 - Interface to be added: `SourceSearcher.search(question: string, filters: { card_id?, issuer_id? }): SearchResult[]`.
 
+### Phase 2 (Multi-source extraction + cross-check)
+- See §22 for the full design.
+- MVP reserves `db/schema/extraction.ts` as an empty namespace so Phase 2's migrations land cleanly.
+
 ### Layer 5 (Merchant Resolver)
 - `MerchantResolver` interface live from Day 1, hardcoded impl.
 - Swap to embedding-based impl later without touching calculator.
@@ -1090,3 +1094,220 @@ Do not skip Section 8 (calculator semantics doc). Most schema issues in v2 came 
 Do not skip the Week 1 hard checkpoint. The cost of a schema redesign is much lower in Week 1 than in Week 3.
 
 When in doubt between "build it now" and "stub the interface": stub the interface.
+
+---
+
+## 22. Phase 2: Multi-Source Extraction + Cross-Check (Post-MVP)
+
+### 22.1 Why Phase 2 exists
+
+Hand-curated YAML scales to ~25 cards comfortably and ~50 with effort. HK has ~70–150 cards in active use depending on how variants are counted. To reach the long tail without compromising accuracy, MVP's hand-curated foundation needs a complementary **extraction + cross-check pipeline**.
+
+The product thesis still stands: **the moat is accuracy**. Phase 2 does not sacrifice that. It builds infrastructure so that bulk coverage *cannot* enter the approved rule set without source-backed evidence and (when sources disagree) human resolution.
+
+### 22.2 Design principles
+
+Three new principles layered on top of PRD §5:
+
+1. **Multi-source by default.** Every claim about a card rule is anchored to a specific source. The same rule may be supported by multiple claims from multiple sources.
+2. **Cross-check before approve.** When multiple sources speak to the same rule, the system compares them. Agreement → high confidence. Disagreement → conflict review task.
+3. **LLM extracts; humans approve.** LLMs are first-class extractors, never first-class approvers. An LLM-extracted claim enters `status='draft'` and is invisible to the calculator until a human approves it.
+
+### 22.3 Source landscape (priorities from PRD §6.6, expanded)
+
+```
+Priority 1 — Official T&C PDF                  (truth, when readable)
+Priority 2 — Official bank webpage             (truth, current)
+Priority 3 — Official app screenshot           (truth, but OCR-fragile)
+Priority 4 — Bank Open API                     (truth, machine-readable)
+Priority 5 — Competitor / aggregator           (MoneyHero, MoneySmart, 小斯, 里先生)
+Priority 6 — Forum / Reddit / LIHKG            (current, anecdotal)
+Priority 7 — User submission                   (rare but valuable)
+Priority 8 — Manual note                       (last resort)
+```
+
+Phase 2 ingests *systematically* from priorities 2, 5, 6 (web), with priority 1 supplemented manually when PDFs require OCR.
+
+### 22.4 Workflow
+
+```
+                ┌─────────────────────────────────────┐
+                │  Scanner: per-card source crawl     │
+                │  (official + 2-3 competitors +      │
+                │   1-2 forum threads)                │
+                └─────────────────┬───────────────────┘
+                                  │
+                                  ▼
+                ┌─────────────────────────────────────┐
+                │ source_documents (extracted_text +  │
+                │ source_chunks — already in MVP)     │
+                └─────────────────┬───────────────────┘
+                                  │
+                  ┌───────────────┴──────────────┐
+                  ▼                              ▼
+        ┌──────────────────┐         ┌──────────────────┐
+        │ LLM extractor    │         │ Manual extractor │
+        │ (schema-guided)  │         │ (for PDFs)       │
+        └────────┬─────────┘         └────────┬─────────┘
+                 │                            │
+                 └──────────────┬─────────────┘
+                                ▼
+                ┌─────────────────────────────────────┐
+                │ source_claims (one row per source   │
+                │ per claim, status=pending_review)   │
+                └─────────────────┬───────────────────┘
+                                  │
+                                  ▼
+                ┌─────────────────────────────────────┐
+                │ Cross-check aggregator              │
+                │  groups claims by (card, claim_type,│
+                │  category) → cross_check_groups     │
+                └─────────────────┬───────────────────┘
+                                  │
+                  ┌───────────────┼───────────────┐
+                  ▼               ▼               ▼
+            [agreed: ≥2     [single: only    [conflict: sources
+             sources agree]  1 source]        disagree on value]
+                  │               │               │
+                  ▼               ▼               ▼
+            review_task     review_task     review_task
+            (confirm)       (needs corro-   (conflict_resolution,
+                            boration)        priority=high)
+                  │               │               │
+                  └───────────────┴───────────────┘
+                                  │
+                                  ▼
+                ┌─────────────────────────────────────┐
+                │ Approved → reward_rules             │
+                │ (with all supporting source_ids)    │
+                └─────────────────────────────────────┘
+```
+
+### 22.5 New entities (reserved in MVP, implemented in Phase 2)
+
+#### `source_claims`
+
+A single structured assertion extracted from one source. Multiple claims can describe the same rule (e.g., HSBC website says 4% online, MoneyHero says 4% online, LIHKG thread says 4% online → three claims, one canonical rule).
+
+```ts
+{
+  claim_id: uuid pk
+  source_id: fk → source_documents
+  card_id: fk
+  claim_type: text                    // earn_rate / cap / exclusion / welcome_offer / category_definition / annual_fee / eligibility
+  structured_payload: jsonb           // shape matches reward_rules.reward_formula_payload + flattened conditions
+  extracted_text_snippet: text        // the actual quote from the source
+  extraction_run_id: fk?              // null if manual
+  extracted_by: text                  // 'manual' | 'claude-opus-4-7-2026-06' | 'gpt-x' | 'parser-v1'
+  confidence_score: numeric           // extractor's self-reported confidence
+  status: text                        // draft / pending_review / approved / rejected / superseded
+  cross_check_group_id: fk?
+  reviewer_note: text?
+  reviewed_by: uuid?
+  reviewed_at: timestamptz?
+  created_at, updated_at
+}
+```
+
+#### `extraction_runs`
+
+One row per extraction job (a single LLM call or batch). Lets you replay history when a prompt or model changes.
+
+```ts
+{
+  run_id: uuid pk
+  source_id: fk
+  model_id: text                      // 'claude-opus-4-7' / 'gpt-x' / 'parser:hsbc-tc-v1'
+  prompt_version: text                // versioned prompt id
+  input_hash: text                    // hash of (chunk + prompt) — for dedup
+  claims_emitted: int
+  cost_usd_cents: int?
+  started_at, finished_at
+  status: text                        // succeeded / failed / partial
+  error: text?
+  created_at
+}
+```
+
+#### `cross_check_groups`
+
+One row per (card_id, claim_type, key_dimension) cluster. Holds the cross-check verdict.
+
+```ts
+{
+  group_id: uuid pk
+  card_id: fk
+  claim_type: text
+  key_dimension: text                 // e.g. 'category_slug=online_local' or 'rule_type=base_earn'
+  status: text                        // agreed / single_source / conflict / superseded
+  canonical_payload: jsonb?           // the agreed value (null if conflict unresolved)
+  aggregate_confidence: numeric
+  supporting_claim_ids: uuid[]        // claims that contribute
+  contradicting_claim_ids: uuid[]     // claims that disagree
+  approved_rule_id: fk?               // the reward_rule this group eventually became
+  created_at, updated_at
+}
+```
+
+#### `review_tasks` (already designed in v1 PRD §6.11)
+
+Re-introduce. Phase 2 makes heavy use of:
+- `task_type='claim_review'` (single claim approve/reject)
+- `task_type='conflict_resolution'` (multiple sources disagree)
+- `task_type='cross_check_confirmation'` (agreement found, confirm canonical value)
+
+### 22.6 Cross-check semantics
+
+For each `(card_id, claim_type, key_dimension)`:
+
+1. Group all pending claims.
+2. Compute `canonical_payload` candidates:
+   - **Numeric values (rate, cap, miles_per_hkd)**: median if within ±5%, else flag conflict.
+   - **Categorical values (category_slug, currency_slug)**: most-common-wins if ≥2/3 agree, else conflict.
+   - **Boolean flags (requires_activation)**: any `true` from priority ≤4 wins (banks know best when registration is required); conflict only if priorities 1–2 disagree.
+3. Compute `aggregate_confidence`:
+   ```
+   weight(claim) = source_priority_weight × claim.confidence_score
+   weights: P1=1.0, P2=0.9, P3=0.8, P4=0.95, P5=0.5, P6=0.3, P7=0.2, P8=0.1
+   aggregate = weighted_avg(supporting_claims)
+   ```
+4. Status:
+   - `agreed` if ≥2 supporting claims from priority ≤5 and no contradiction.
+   - `single_source` if only 1 source.
+   - `conflict` otherwise. Auto-create `conflict_resolution` review task.
+
+### 22.7 Approval path
+
+A `cross_check_group` becomes a `reward_rule` only when:
+1. Status is `agreed` or `single_source`.
+2. A reviewer approves (or auto-approve if status=`agreed` AND aggregate_confidence ≥ 0.9 AND all supporting sources are priority ≤2 — opt-in per-issuer setting).
+3. The resulting `reward_rule.source_id` is set to the highest-priority supporting source. All other supporting source_ids are stored in `reward_rule_sources` join table (new entity, simple slug+id mapping).
+
+### 22.8 Phase 2 schema namespace
+
+Mirror the MVP isolation pattern:
+
+```
+src/db/schema/
+  catalog.ts      // Layer 2 — populated in MVP
+  user.ts         // Layer 7 — RESERVED in MVP
+  extraction.ts   // Phase 2 — RESERVED, empty in MVP
+```
+
+`extraction.ts` ships in MVP as `export {}` — no tables, no foreign keys. Phase 2's first commit is the migration adding source_claims / extraction_runs / cross_check_groups / review_tasks / reward_rule_sources.
+
+### 22.9 What Phase 2 does NOT do
+
+- It does not build a chatbot, Wallet Mode, or Plan Mode (Phase 3+).
+- It does not run automatic crawlers (a manual "fetch this URL into a source_document" command suffices).
+- It does not OCR app screenshots (still future).
+- It does not weight forum/Reddit/LIHKG as much as official — the priority system handles that.
+
+### 22.10 Phase 2 success criteria
+
+Phase 2 is done when:
+1. ≥25 cards are `approved` end-to-end (up from MVP's 8–10).
+2. ≥10 additional cards reach `single_source` or `conflict` status (in review queue).
+3. The Phase 2 demo flow runs: open `/sources/<some-pdf>` → click "Extract" → LLM emits N claims → each visible in `/review` → reviewer approves → claims become reward_rules → calculator output updates within seconds.
+4. At least one real conflict has been detected and resolved through the UI.
+5. The `extraction_runs` table records cost + latency so the operator knows what extraction costs.
