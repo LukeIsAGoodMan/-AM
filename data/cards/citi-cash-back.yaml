@@ -1,0 +1,39 @@
+issuerSlug: citi
+
+card:
+  slug: citi-cash-back
+  productFamily: Citi Cash Back
+  cardNameEn: Citi Cash Back Card
+  cardNameZh: Citi 現金回贈信用卡
+  network: Visa
+  cardLevel: platinum
+  status: active
+  officialUrl: https://www.citibank.com.hk/english/credit-cards/cash-back-card/index.htm
+  notes: |
+    M1 simplification: modeled as flat 1.2% base earn. Real card has tiered rates
+    added in M3 or future revision.
+
+sources:
+  - slug: citi-cash-back-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Citi Cash Back Card — official product page
+    url: https://www.citibank.com.hk/english/credit-cards/cash-back-card/index.htm
+    language: mixed
+    status: active
+    notes: M1 placeholder source. Replace with real T&C PDF in M9.
+
+rules:
+  - slug: citi-cash-back__base_earn
+    ruleName: Base earn
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.012
+    rewardCurrencySlug: hkd_cashback
+    sourceSlug: citi-cash-back-official-page
+    confidenceScore: 0.9
+    notes: |
+      M1 simplification. Real rate varies by category; modeled as flat 1.2% to
+      validate pipeline.

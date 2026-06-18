@@ -5,6 +5,7 @@ import {
   text,
   numeric,
   timestamp,
+  date,
   integer,
   jsonb,
   boolean,
@@ -26,6 +27,15 @@ import {
 // M4 additions:
 //   - reward_rules: applies_to text[] (exclusion scope), stacking_policy,
 //                   exclusive_group, priority
+//
+// M5 additions:
+//   - CHECK constraint: approved rules must have source_id
+//
+// M6 additions:
+//   - reward_rules: effective_start, effective_end (date filtering for the
+//                   calculator's step 2; supersedes flow uses effective_end)
+//   - reward_rules: supersedes_rule_id (FK self) — new rule explicitly
+//                   replaces an old one after an economic change in YAML
 
 export const issuers = pgTable("issuers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -177,6 +187,17 @@ export const rewardRules = pgTable("reward_rules", {
   capRewardAmount: numeric("cap_reward_amount", { precision: 14, scale: 4 }),
   capPeriod: text("cap_period"), // transaction / day / month / quarter / year / campaign / none
   capBasis: text("cap_basis"), // spending / reward / transaction_count
+
+  // M6: temporal — calculator filters on these in step 2 (date range).
+  effectiveStart: date("effective_start"),
+  effectiveEnd: date("effective_end"),
+
+  // M6: supersedes chain — economic change in YAML must declare which rule
+  // is being replaced; old rule keeps its row with effective_end set.
+  supersedesRuleId: uuid("supersedes_rule_id").references(
+    (): AnyPgColumn => rewardRules.id,
+    { onDelete: "set null" },
+  ),
 
   // Provenance
   sourceId: uuid("source_id").references(() => sourceDocuments.id, {

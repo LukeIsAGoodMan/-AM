@@ -1,0 +1,47 @@
+issuerSlug: hang-seng
+
+card:
+  slug: hang-seng-mpower
+  productFamily: Hang Seng MPOWER
+  cardNameEn: Hang Seng MPOWER Card
+  cardNameZh: 恒生 MPOWER 信用卡
+  network: Mastercard
+  cardLevel: platinum
+  status: active
+  officialUrl: https://www.hangseng.com/en-hk/credit-cards/all-cards/mpower/
+  notes: |
+    M3 simplification — 2-tier monthly rebate (0.4% / 5%). Real card has category
+    overlays and a separate max-rebate cap; both added in M4/M9.
+
+sources:
+  - slug: hang-seng-mpower-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Hang Seng MPOWER Card — official product page
+    url: https://www.hangseng.com/en-hk/credit-cards/all-cards/mpower/
+    language: mixed
+    status: active
+    notes: M3 placeholder source. Replace with real T&C PDF in M9.
+
+rules:
+  - slug: hang-seng-mpower__tiered_monthly
+    ruleName: MPOWER monthly tiered rebate
+    ruleType: category_bonus
+    status: approved
+    rewardFormula:
+      type: tiered_percent
+      accrualPeriod: month
+      tiers:
+        - minAmountHkd: 0
+          maxAmountHkd: 4000
+          rate: 0.004
+        - minAmountHkd: 4000
+          maxAmountHkd: null
+          rate: 0.05
+    rewardCurrencySlug: hkd_cashback
+    requiresRegistration: true
+    sourceSlug: hang-seng-mpower-official-page
+    confidenceScore: 0.8
+    notes: |
+      Tier resets every calendar month — caller passes capUsage keyed by
+      '<ruleId>__<YYYY-MM>' to keep periods isolated.

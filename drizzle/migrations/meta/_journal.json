@@ -36,6 +36,13 @@
       "when": 1781756816552,
       "tag": "0004_outstanding_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781757195598,
+      "tag": "0005_brainy_sentinels",
+      "breakpoints": true
     }
   ]
 }

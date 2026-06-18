@@ -1,0 +1,56 @@
+issuerSlug: hsbc
+
+card:
+  slug: hsbc-red
+  productFamily: HSBC Red
+  cardNameEn: HSBC Red Credit Card
+  cardNameZh: HSBC Red 信用卡
+  network: Visa
+  cardLevel: platinum
+  status: active
+  officialUrl: https://www.hsbc.com.hk/credit-cards/products/red/
+  notes: |
+    M2 modeling: 0.4% base + 4% online_local up to HKD 100k/yr eligible spend.
+    Real exclusions (tax / e-wallet topup) added in M4 / M9.
+
+sources:
+  - slug: hsbc-red-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: HSBC Red Credit Card — official product page
+    url: https://www.hsbc.com.hk/credit-cards/products/red/
+    language: mixed
+    status: active
+    notes: M2 placeholder source. Replace with real T&C PDF in M9.
+
+rules:
+  - slug: hsbc-red__base_earn
+    ruleName: Base earn (0.4%)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.004
+    rewardCurrencySlug: hkd_cashback
+    sourceSlug: hsbc-red-official-page
+    confidenceScore: 0.9
+
+  - slug: hsbc-red__online_local_bonus
+    ruleName: Online local 4% bonus
+    ruleType: online_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.04
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: online_local
+    isOnline: true
+    isOverseas: false
+    cap:
+      amountHkd: 100000
+      period: year
+      basis: spending
+    sourceSlug: hsbc-red-official-page
+    confidenceScore: 0.85
+    notes: |
+      Tax / e-wallet topup exclusions arrive in M4 (exclusion rules with appliesTo).

@@ -15,7 +15,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx --env-file=.env.local scripts/seed.ts"
+    "validate:data": "tsx scripts/validate-data.ts",
+    "import:data": "tsx --env-file=.env.local scripts/import-data.ts",
+    "db:seed": "pnpm import:data"
   },
   "dependencies": {
     "dotenv": "^16.4.0",
@@ -24,6 +26,7 @@
     "pg": "^8.13.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "yaml": "^2.9.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

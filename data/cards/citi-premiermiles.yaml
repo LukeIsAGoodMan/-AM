@@ -1,0 +1,82 @@
+issuerSlug: citi
+
+card:
+  slug: citi-premiermiles
+  productFamily: Citi PremierMiles
+  cardNameEn: Citi PremierMiles Card
+  cardNameZh: Citi PremierMiles 信用卡
+  network: Visa
+  cardLevel: platinum
+  status: active
+  officialUrl: https://www.citibank.com.hk/english/credit-cards/premiermiles-card/index.htm
+  notes: |
+    M4 simplification — base 1 mile / HK$8 + additive FX bonus + tax exclusion
+    (bonuses only). Real card has cap on miles bonus and AsiaMiles redemption
+    rules; added in M9.
+
+sources:
+  - slug: citi-premiermiles-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Citi PremierMiles Card — official product page
+    url: https://www.citibank.com.hk/english/credit-cards/premiermiles-card/index.htm
+    language: mixed
+    status: active
+    notes: M4 placeholder source. Replace with real T&C PDF in M9.
+
+rules:
+  - slug: citi-premiermiles__base_earn
+    ruleName: Base earn (HK$8 = 1 mile)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 8
+      currencySlug: asia_miles
+    rewardCurrencySlug: asia_miles
+    sourceSlug: citi-premiermiles-official-page
+    confidenceScore: 0.9
+    priority: 100
+
+  - slug: citi-premiermiles__fx_bonus
+    ruleName: Foreign currency bonus (additive)
+    ruleType: foreign_currency_bonus
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 8
+      currencySlug: asia_miles
+    rewardCurrencySlug: asia_miles
+    isForeignCurrency: true
+    stackingPolicy: additive
+    priority: 90
+    sourceSlug: citi-premiermiles-official-page
+    confidenceScore: 0.85
+    notes: |
+      Additive on top of base earn — FX txn earns 1/8 (base) + 1/8 (FX) = 1/4 mile
+      per HKD effective rate.
+
+  - slug: citi-premiermiles__tax_exclusion
+    ruleName: Tax / government — bonus excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: Tax / government category does not earn bonus miles.
+    rewardCurrencySlug: asia_miles
+    categorySlug: tax_government
+    appliesTo:
+      - category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: citi-premiermiles-official-page
+    confidenceScore: 0.85
+    notes: |
+      base_earn deliberately NOT in appliesTo: tax payments still earn the
+      basic 1/8 mile per HKD — PRD §8.4 canonical case.

@@ -1,0 +1,15 @@
+currencies:
+  - slug: hkd_cashback
+    nameEn: HKD Cashback
+    nameZh: 港幣現金回贈
+    type: cashback
+    baseValueHkd: 1.0
+    valuationNote: 1 unit = HKD 1.00
+
+  - slug: asia_miles
+    nameEn: Asia Miles
+    nameZh: 亞洲萬里通
+    type: miles
+    baseValueHkd: 0.10
+    valuationNote: |
+      1 mile ≈ HKD 0.10 — conservative estimate; long-haul J redemptions can yield 0.15–0.25.
