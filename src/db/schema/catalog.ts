@@ -36,6 +36,12 @@ import {
 //                   calculator's step 2; supersedes flow uses effective_end)
 //   - reward_rules: supersedes_rule_id (FK self) — new rule explicitly
 //                   replaces an old one after an economic change in YAML
+//
+// M8 additions:
+//   - source_documents: extracted_text, extraction_method, extraction_failed,
+//                       content_hash, retrieved_at (forward-compat for Phase 2 RAG)
+//   - source_chunks table: ~500-token slices of extracted_text;
+//                          embedding column added in Phase 2 migration
 
 export const issuers = pgTable("issuers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -106,10 +112,35 @@ export const sourceDocuments = pgTable("source_documents", {
   language: text("language").default("unknown").notNull(),
   status: text("status").default("active").notNull(),
   notes: text("notes"),
+
+  // M8: extraction state — populated by extract:sources / import.
+  // null extracted_text + extraction_failed=false = "not yet attempted".
+  // null extracted_text + extraction_failed=true  = "tried, failed (see notes)".
+  extractedText: text("extracted_text"),
+  extractionMethod: text("extraction_method"), // 'pdf-parse' / 'html-cheerio' / 'manual' / null
+  extractionFailed: boolean("extraction_failed").default(false).notNull(),
+  extractionError: text("extraction_error"),
+  contentHash: text("content_hash"),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+})
+
+export const sourceChunks = pgTable("source_chunks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceId: uuid("source_id")
+    .notNull()
+    .references(() => sourceDocuments.id, { onDelete: "cascade" }),
+  chunkIndex: integer("chunk_index").notNull(),
+  text: text("text").notNull(),
+  metadata: jsonb("metadata").default({}).notNull(),
+  // embedding vector(1536) — added in Phase 2 migration when pgvector lands
+  createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 })
@@ -222,6 +253,9 @@ export const rewardRules = pgTable("reward_rules", {
     sql`${table.status} <> 'approved' OR ${table.sourceId} IS NOT NULL`,
   ),
 ])
+
+export type SourceChunk = typeof sourceChunks.$inferSelect
+export type NewSourceChunk = typeof sourceChunks.$inferInsert
 
 export type Issuer = typeof issuers.$inferSelect
 export type NewIssuer = typeof issuers.$inferInsert
