@@ -18,8 +18,8 @@ import { cn } from "@/lib/utils"
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ready: false },
   { href: "/cards", label: "Cards", icon: CreditCard, ready: true },
-  { href: "/rules", label: "Rules", icon: Receipt, ready: false },
-  { href: "/sources", label: "Sources", icon: FileText, ready: false },
+  { href: "/rules", label: "Rules", icon: Receipt, ready: true },
+  { href: "/sources", label: "Sources", icon: FileText, ready: true },
   { href: "/welcome-offers", label: "Welcome Offers", icon: Gift, ready: false },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone, ready: false },
   { href: "/merchants", label: "Merchants", icon: Store, ready: false },
