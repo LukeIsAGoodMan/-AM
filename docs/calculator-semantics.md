@@ -6,7 +6,7 @@ Companion to:
 - [prd.md §8](./prd.md) — high-level algorithm description.
 - Implementation lives in `src/lib/calculator/` (entry: `calculate.ts`).
 
-Updated as of: **M10** (campaign gate via `activatedCampaignIds`).
+Updated as of: **M14** (caveats + explain modules now live for the test page).
 
 ---
 
@@ -353,10 +353,18 @@ These hold by construction. If you break one, you have a bug.
 - **Merchant resolver** (`merchantName → categorySlug`) — M5/M7.
 - **Date-range filter** (`effective_start ≤ txn.date ≤ effective_end`) — M5.
 - **`cap.basis ∈ { reward, transaction_count }`** — added when a real card needs them.
-- **Caveat synthesis** (e.g., "this merchant's category is uncertain", "rule is approaching cap") — M14 when the calculator-test page renders them.
+- **Caveat synthesis** — lives in `src/lib/calculator/caveats.ts` (M14). Pure
+  function; called by the test page and any future surface that renders
+  results. Keeping it outside `calculate()` preserves calculator purity.
+- **Per-rule explanation trace** — lives in `src/lib/calculator/explain.ts`
+  (M14). Mirrors the calculate() pipeline gate-by-gate, returning one
+  `RuleOutcome` per rule (included / no_match_X / needs_activation /
+  excluded_by / zero_reward). Used by the "Why this lost" view; pure and
+  test-covered. Not folded into calculate() because the hot path stays
+  smaller without it.
 - **Stacking against caps** — if multiple rules share a `cap.usageKey`, only the read happens correctly today; the calculator does NOT update `capUsage` between rules in the same calculation. That responsibility lives outside the calculator (the caller advances cap state in user_card_caps_state).
 - **Reward valuation time-travel** — historical txn at historical valuation. Layer 6 / Phase 2.
-- **Multi-card ranking** — `rankCards` is a thin wrapper that calls `calculate` per card and sorts. Lives in M14 (calculator test page).
+- **Multi-card ranking** — `rankCards` is a thin wrapper that calls `calculate` per card and sorts. Today lives directly inside `/calculator-test`; extract when a second caller needs it.
 
 ---
 

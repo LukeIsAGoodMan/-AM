@@ -36,7 +36,11 @@ export class HardcodedMerchantResolver implements MerchantResolver {
     this.byName.set(key, merchant)
   }
 
-  async resolve(name: string, _cardId?: string): Promise<MerchantResolution> {
+  // The MerchantResolver interface is async because Phase 2's DB-backed
+  // resolver will do real IO. The hardcoded impl resolves in-process; we
+  // also expose a sync entry point for the M14 UI which composes the
+  // resolution into derived state via useMemo (no async needed).
+  resolveSync(name: string): MerchantResolution {
     const m = this.byName.get(normalize(name))
     if (!m) return FALLBACK_RESOLUTION
     return {
@@ -47,6 +51,10 @@ export class HardcodedMerchantResolver implements MerchantResolver {
       sourceIds: [],
       fallbackUsed: false,
     }
+  }
+
+  async resolve(name: string, _cardId?: string): Promise<MerchantResolution> {
+    return this.resolveSync(name)
   }
 }
 
