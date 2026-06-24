@@ -51,6 +51,14 @@ export default async function RuleDetailPage({
             <span className="font-mono text-xs text-neutral-500">{rule.slug}</span>
           </span>
         }
+        actions={
+          <Link
+            href={`/rules/${rule.slug}/edit`}
+            className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 shadow-sm hover:bg-neutral-50"
+          >
+            Edit
+          </Link>
+        }
       />
 
       <div className="grid gap-4 px-6 pt-6 lg:grid-cols-3">

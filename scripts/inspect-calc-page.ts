@@ -1,5 +1,11 @@
-// One-shot Playwright probe of /calculator-test. Run with the dev server
-// up on :3000: pnpm tsx scripts/inspect-calc-page.ts
+// One-shot Playwright probe. Run with the dev server up on :3000:
+//   pnpm verify:ui
+// Asserts the interactive contracts that can't be unit-tested:
+//   1. fixture campaign auto-prefill
+//   2. selected-category highlighting
+//   3. Klook ranking order
+//   4. M15 edit-rule happy path (notes change on approved rule succeeds)
+//   5. M15 edit-rule refusal gate (economic change on approved rule refused)
 
 import { chromium } from "playwright"
 
@@ -13,7 +19,6 @@ async function main() {
   })
 
   console.log("\n=== Test 1: campaign auto-prefill ===")
-  // The specific campaign opt-in checkbox lives next to the campaign name.
   const campaignBox = page.locator(
     "li.flex.items-center.gap-1\\.5:has(span:text('HSBC Red — Q3 2026 Online Extra 2%')) input[type=checkbox]",
   )
@@ -45,6 +50,38 @@ async function main() {
     .locator("div.rounded.border.border-neutral-200 div.bg-neutral-50 span")
     .allTextContents()
   console.log("first ranks:", rankItems.slice(0, 12))
+
+  console.log("\n=== Test 4: M15 edit-rule happy path (notes change) ===")
+  await page.goto(
+    "http://localhost:3000/rules/hsbc-red__base_earn/edit",
+    { waitUntil: "networkidle" },
+  )
+  const notesField = page.locator("textarea").nth(0)
+  const stamp = new Date().toISOString()
+  await notesField.fill(`verify:ui touched at ${stamp}`)
+  await page.click("button:has-text('Save')")
+  await page.waitForSelector(".border-emerald-200", { timeout: 4000 })
+  const successMsg = await page.locator(".border-emerald-200").textContent()
+  console.log(`success banner: ${successMsg?.trim().slice(0, 80)}`)
+
+  console.log("\n=== Test 5: M15 edit-rule refusal gate (economic change) ===")
+  // Same approved rule; bump rate from 0.004 → 0.005. The syncer's refusal
+  // gate (mirrored in saveRuleEdit) must reject.
+  await page.goto(
+    "http://localhost:3000/rules/hsbc-red__base_earn/edit",
+    { waitUntil: "networkidle" },
+  )
+  const formulaArea = page
+    .locator("textarea")
+    .filter({ hasText: "simple_percent" })
+  const cur = (await formulaArea.inputValue()).trim()
+  const bumped = cur.replace(/"rate"\s*:\s*[0-9.]+/, '"rate": 0.005')
+  if (bumped === cur) throw new Error("Could not patch rate in payload JSON")
+  await formulaArea.fill(bumped)
+  await page.click("button:has-text('Save')")
+  await page.waitForSelector(".border-rose-200", { timeout: 4000 })
+  const errorMsg = await page.locator(".border-rose-200").textContent()
+  console.log(`refusal banner: ${errorMsg?.trim().slice(0, 140)}`)
 
   await browser.close()
 }

@@ -50,16 +50,24 @@ export default async function SourceDetailPage({
           </span>
         }
         actions={
-          source.url ? (
-            <a
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
+          <div className="flex gap-2">
+            <Link
+              href={`/sources/${source.slug}/edit`}
               className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 shadow-sm hover:bg-neutral-50"
             >
-              Open source ↗
-            </a>
-          ) : null
+              Edit
+            </Link>
+            {source.url ? (
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-700 shadow-sm hover:bg-neutral-50"
+              >
+                Open source ↗
+              </a>
+            ) : null}
+          </div>
         }
       />
 
