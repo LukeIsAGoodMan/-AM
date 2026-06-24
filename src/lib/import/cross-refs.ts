@@ -17,16 +17,19 @@ export function checkCrossRefs(dataset: LoadedDataset): CrossRefError[] {
   const categorySlugs = new Set(dataset.categories.map((c) => c.slug))
 
   // All sources and rules live inside card files, but we collect their slugs
-  // globally so a rule in card A can reference (e.g.) a campaign in card B
-  // once that lands. For M6 the only cross-file ref is rule.supersedesSlug.
+  // globally so a rule in card A can reference (e.g.) a campaign in card B.
   const sourceSlugs = new Set<string>()
   const ruleSlugs = new Set<string>()
   const cardSlugs = new Set<string>()
+  const campaignSlugs = new Set<string>()
 
   for (const { data } of dataset.cardFiles) {
     cardSlugs.add(data.card.slug)
     for (const s of data.sources) sourceSlugs.add(s.slug)
     for (const r of data.rules) ruleSlugs.add(r.slug)
+  }
+  for (const { data } of dataset.campaignFiles) {
+    campaignSlugs.add(data.slug)
   }
 
   // Category self-references (parentSlug)
@@ -99,6 +102,12 @@ export function checkCrossRefs(dataset: LoadedDataset): CrossRefError[] {
           message: `supersedesSlug=${r.supersedesSlug} not found in any card file`,
         })
       }
+      if (r.campaignSlug && !campaignSlugs.has(r.campaignSlug)) {
+        errors.push({
+          path: `${rulePath}.campaignSlug`,
+          message: `campaignSlug=${r.campaignSlug} not found in data/campaigns/`,
+        })
+      }
 
       // Rule integrity: exclusion rules must have non-empty appliesTo
       if (r.ruleType === "exclusion") {
@@ -108,6 +117,14 @@ export function checkCrossRefs(dataset: LoadedDataset): CrossRefError[] {
             message: `exclusion rules must declare appliesTo (the rule_types this exclusion disables)`,
           })
         }
+      }
+
+      // Rule integrity: campaign_bonus rules must reference a campaign
+      if (r.ruleType === "campaign_bonus" && !r.campaignSlug) {
+        errors.push({
+          path: `${rulePath}.campaignSlug`,
+          message: `campaign_bonus rules must reference a campaignSlug`,
+        })
       }
 
       // Rule integrity: temporal sanity
@@ -127,6 +144,27 @@ export function checkCrossRefs(dataset: LoadedDataset): CrossRefError[] {
         })
       }
     }
+
+    // Welcome offers: source must be declared in the card's own sources[]
+    for (const wo of data.welcomeOffers ?? []) {
+      const woPath = `${path}::welcomeOffers[${wo.slug}]`
+      if (!sourceSlugsInFile.has(wo.sourceSlug)) {
+        errors.push({
+          path: `${woPath}.sourceSlug`,
+          message: `sourceSlug=${wo.sourceSlug} not declared in this card's sources[]`,
+        })
+      }
+      if (
+        wo.effectiveStart &&
+        wo.effectiveEnd &&
+        wo.effectiveEnd < wo.effectiveStart
+      ) {
+        errors.push({
+          path: `${woPath}.effectiveEnd`,
+          message: `effectiveEnd (${wo.effectiveEnd}) earlier than effectiveStart (${wo.effectiveStart})`,
+        })
+      }
+    }
   }
 
   // Card slug uniqueness across files
@@ -140,6 +178,44 @@ export function checkCrossRefs(dataset: LoadedDataset): CrossRefError[] {
       })
     } else {
       seenCardSlugs.set(data.card.slug, path)
+    }
+  }
+
+  // Campaigns: issuer + (optional) card + source must resolve; slug unique
+  const seenCampaignSlugs = new Map<string, string>()
+  for (const { path, data } of dataset.campaignFiles) {
+    if (!issuerSlugs.has(data.issuerSlug)) {
+      errors.push({
+        path: `${path}::issuerSlug`,
+        message: `issuerSlug=${data.issuerSlug} not found`,
+      })
+    }
+    if (data.cardSlug && !cardSlugs.has(data.cardSlug)) {
+      errors.push({
+        path: `${path}::cardSlug`,
+        message: `cardSlug=${data.cardSlug} not found`,
+      })
+    }
+    if (data.sourceSlug && !sourceSlugs.has(data.sourceSlug)) {
+      errors.push({
+        path: `${path}::sourceSlug`,
+        message: `sourceSlug=${data.sourceSlug} not found in any card file`,
+      })
+    }
+    if (data.effectiveEnd < data.effectiveStart) {
+      errors.push({
+        path: `${path}::effectiveEnd`,
+        message: `effectiveEnd (${data.effectiveEnd}) earlier than effectiveStart (${data.effectiveStart})`,
+      })
+    }
+    const prev = seenCampaignSlugs.get(data.slug)
+    if (prev) {
+      errors.push({
+        path: `${path}::slug`,
+        message: `duplicate campaign slug ${data.slug}; also defined in ${prev}`,
+      })
+    } else {
+      seenCampaignSlugs.set(data.slug, path)
     }
   }
 

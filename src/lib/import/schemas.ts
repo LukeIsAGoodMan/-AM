@@ -142,6 +142,9 @@ const RuleEntrySchema = z.object({
   requiresActivation: z.boolean().default(false),
   requiresRegistration: z.boolean().default(false),
 
+  // M10: campaign attachment — calculator gates by activatedCampaignIds.
+  campaignSlug: SlugSchema.optional(),
+
   // Cap
   cap: RuleCapSchema.optional(),
 
@@ -166,6 +169,68 @@ const RuleEntrySchema = z.object({
 })
 export type RuleEntry = z.infer<typeof RuleEntrySchema>
 
+// ---------- welcome offers (embedded in card files) ----------
+
+// PRD §6.8 — tiered welcome offer. Each tier defines a spending goal +
+// reward; isAdditive=true means hitting this tier adds on top of previous
+// tiers' rewards (vs replaces them).
+const WelcomeOfferTierSchema = z.object({
+  minSpendHkd: z.number().nonnegative(),
+  withinDays: z.number().int().positive(),
+  reward: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("cashback_hkd"), amount: z.number() }),
+    z.object({
+      type: z.literal("miles"),
+      amount: z.number(),
+      currencySlug: SlugSchema,
+    }),
+    z.object({
+      type: z.literal("points"),
+      amount: z.number(),
+      currencySlug: SlugSchema,
+    }),
+    z.object({
+      type: z.literal("gift"),
+      description: z.string(),
+      estimatedHkd: z.number(),
+    }),
+    z.object({ type: z.literal("fee_waiver"), years: z.number() }),
+  ]),
+  isAdditive: z.boolean().default(true),
+})
+export const WelcomeOfferTiersSchema = z.array(WelcomeOfferTierSchema).min(1)
+
+const WelcomeOfferEntrySchema = z.object({
+  slug: SlugSchema,
+  offerName: z.string().min(1),
+  offerType: z.enum([
+    "cashback",
+    "miles",
+    "points",
+    "gift",
+    "voucher",
+    "fee_waiver",
+    "other",
+  ]),
+  tiers: WelcomeOfferTiersSchema,
+  estimatedValueHkd: z.number().nonnegative().optional(),
+  estimationNote: z.string().optional(),
+  applicationChannel: z
+    .enum(["online", "app", "branch", "referral", "any", "unknown"])
+    .default("unknown"),
+  newCustomerOnly: z.boolean().default(false),
+  existingCustomerRestrictionNote: z.string().optional(),
+  annualFeeRequired: z.boolean().default(false),
+  requiresApplyWithCode: z.string().optional(),
+  effectiveStart: z.string().optional(),
+  effectiveEnd: z.string().optional(),
+  status: StatusSchema,
+  confidenceScore: z.number().min(0).max(1).default(0.5),
+  sourceSlug: SlugSchema,
+  notes: z.string().optional(),
+})
+export type WelcomeOfferEntry = z.infer<typeof WelcomeOfferEntrySchema>
+
 const CardMetaSchema = z.object({
   slug: SlugSchema,
   productFamily: z.string().optional(),
@@ -188,6 +253,36 @@ export const CardFileSchema = z.object({
   card: CardMetaSchema,
   sources: z.array(SourceEntrySchema).default([]),
   rules: z.array(RuleEntrySchema).default([]),
+  welcomeOffers: z.array(WelcomeOfferEntrySchema).default([]),
 })
 export type CardFile = z.infer<typeof CardFileSchema>
+
+// ---------- campaign (one file per campaign) ----------
+
+export const CampaignFileSchema = z.object({
+  slug: SlugSchema,
+  issuerSlug: SlugSchema,
+  cardSlug: SlugSchema.optional(), // null = applies across issuer's cards
+  campaignName: z.string().min(1),
+  campaignType: z.enum([
+    "online",
+    "dining",
+    "overseas",
+    "merchant",
+    "app_registration",
+    "general",
+    "other",
+  ]),
+  requiresRegistration: z.boolean().default(false),
+  registrationChannel: z
+    .enum(["app", "website", "sms", "none", "unknown"])
+    .optional(),
+  registrationDeadline: z.string().optional(),
+  effectiveStart: z.string(),
+  effectiveEnd: z.string(),
+  status: StatusSchema,
+  sourceSlug: SlugSchema.optional(),
+  notes: z.string().optional(),
+})
+export type CampaignFile = z.infer<typeof CampaignFileSchema>
 

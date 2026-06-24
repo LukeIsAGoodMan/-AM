@@ -20,6 +20,7 @@ const baseRule = (
   isForeignCurrency: null,
   requiresActivation: false,
   requiresRegistration: false,
+  campaignId: null,
   accrualKey: overrides.ruleId,
   cap: null,
   appliesTo: null,
@@ -613,6 +614,74 @@ describe("calculate — M7 categoryResolutionConfidence", () => {
     )
     expect(res.rewardValueHkd).toBe(0)
     expect(res.confidenceScore).toBe(0.3)
+  })
+})
+
+// ---------- M10: campaign gate (activatedCampaignIds) ----------
+
+describe("calculate — M10 campaign gate", () => {
+  const CAMPAIGN_ID = "hsbc-red-q3-online-extra"
+  const onlineBonus = baseRule({
+    ruleId: "hsbc-red__online_local_bonus",
+    ruleName: "Online local 4%",
+    ruleType: "online_bonus",
+    formula: { type: "simple_percent", rate: 0.04 },
+    categorySlug: "online_local",
+    isOnline: true,
+    priority: 80,
+  })
+  const campaignBonus = baseRule({
+    ruleId: "hsbc-red__q3_online_extra",
+    ruleName: "Q3 online extra 2% (campaign)",
+    ruleType: "campaign_bonus",
+    formula: { type: "simple_percent", rate: 0.02 },
+    categorySlug: "online_local",
+    isOnline: true,
+    campaignId: CAMPAIGN_ID,
+    priority: 70,
+  })
+  const rules = [onlineBonus, campaignBonus]
+  const onlineTxn = txn({
+    amountHkd: 1000,
+    categorySlug: "online_local",
+    isOnline: true,
+  })
+
+  it("user NOT registered → campaign rule skipped, only standard online bonus applies", () => {
+    const res = calculate("hsbc-red", rules, onlineTxn, {
+      cardId: "hsbc-red",
+      activatedCampaignIds: [],
+    })
+    expect(res.rewardValueHkd).toBe(40) // 1000 × 4% only
+    expect(res.breakdown).toHaveLength(1)
+    expect(res.breakdown[0]?.ruleType).toBe("online_bonus")
+  })
+
+  it("user registered → both rules apply (additive default)", () => {
+    const res = calculate("hsbc-red", rules, onlineTxn, {
+      cardId: "hsbc-red",
+      activatedCampaignIds: [CAMPAIGN_ID],
+    })
+    expect(res.rewardValueHkd).toBe(60) // 40 + 20
+    expect(res.breakdown).toHaveLength(2)
+    expect(res.breakdown.map((b) => b.ruleType).sort()).toEqual([
+      "campaign_bonus",
+      "online_bonus",
+    ])
+  })
+
+  it("user registered for a different campaign → still skipped", () => {
+    const res = calculate("hsbc-red", rules, onlineTxn, {
+      cardId: "hsbc-red",
+      activatedCampaignIds: ["some-other-campaign"],
+    })
+    expect(res.rewardValueHkd).toBe(40)
+    expect(res.breakdown).toHaveLength(1)
+  })
+
+  it("activatedCampaignIds undefined → treated as empty (rule skipped)", () => {
+    const res = calculate("hsbc-red", rules, onlineTxn)
+    expect(res.rewardValueHkd).toBe(40)
   })
 })
 

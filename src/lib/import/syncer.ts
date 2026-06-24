@@ -1,16 +1,18 @@
 import { eq, inArray, sql } from "drizzle-orm"
 import type { DB } from "@/db/client"
 import {
+  campaigns,
   cards,
   categories,
   issuers,
   rewardCurrencies,
   rewardRules,
   sourceDocuments,
+  welcomeOffers,
   type RewardRule,
 } from "@/db/schema/catalog"
 import type { LoadedDataset } from "./loader"
-import type { RuleEntry } from "./schemas"
+import type { RuleEntry, WelcomeOfferEntry } from "./schemas"
 
 // PRD §11.3. Full-sync semantics:
 //   - Upsert issuers / currencies / categories / cards / sources by slug
@@ -31,6 +33,8 @@ export type SyncReport = {
   archived: number
   unchanged: number
   refusals: SyncRefusal[]
+  welcomeOffers: { inserted: number; updated: number; archived: number }
+  campaigns: { inserted: number; updated: number; archived: number }
 }
 
 export type SyncRefusal = {
@@ -46,6 +50,7 @@ const ECONOMIC_RULE_FIELDS = [
   "rewardFormulaPayload",
   "rewardCurrencyId",
   "categoryId",
+  "campaignId",
   "isOnline",
   "isOverseas",
   "isForeignCurrency",
@@ -82,6 +87,8 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
     archived: 0,
     unchanged: 0,
     refusals: [],
+    welcomeOffers: { inserted: 0, updated: 0, archived: 0 },
+    campaigns: { inserted: 0, updated: 0, archived: 0 },
   }
 
   // ---- Issuers ----
@@ -205,8 +212,10 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
   const issuerRows = await db.select({ id: issuers.id, slug: issuers.slug }).from(issuers)
   const issuerIdBySlug = new Map(issuerRows.map((r) => [r.slug, r.id] as const))
 
-  // ---- Cards + sources + rules ----
-  const yamlRuleSlugs = new Set<string>()
+  // Phase B: cards + sources (rules and welcome offers deferred to phase D
+  // because they may reference campaigns, which we sync in phase C).
+  const cardIdBySlug = new Map<string, string>()
+  const sourceIdBySlugByCard = new Map<string, Map<string, string>>()
 
   for (const { data } of dataset.cardFiles) {
     const issuerId = issuerIdBySlug.get(data.issuerSlug)
@@ -214,7 +223,6 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
       throw new Error(`issuer not loaded for slug=${data.issuerSlug}`)
     }
 
-    // Upsert card
     const cardValues = {
       issuerId,
       productFamily: data.card.productFamily,
@@ -243,8 +251,8 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
           .set({ ...cardValues, updatedAt: new Date() })
           .where(eq(cards.slug, data.card.slug)),
     )
+    cardIdBySlug.set(data.card.slug, cardId)
 
-    // Upsert sources for this card
     const sourceIdBySlug = new Map<string, string>()
     for (const s of data.sources) {
       const id = await upsertBySlug(
@@ -291,8 +299,77 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
       )
       sourceIdBySlug.set(s.slug, id)
     }
+    sourceIdBySlugByCard.set(data.card.slug, sourceIdBySlug)
+  }
 
-    // Sync rules for this card
+  // Build a flat sourceSlug → id map for campaigns (which look up by global slug,
+  // not per-card scoping).
+  const allSourceIdBySlug = new Map<string, string>()
+  for (const m of sourceIdBySlugByCard.values()) {
+    for (const [k, v] of m) allSourceIdBySlug.set(k, v)
+  }
+
+  // Phase C: campaigns
+  const campaignIdBySlug = new Map<string, string>()
+  const yamlCampaignSlugs = new Set<string>()
+  for (const { data: c } of dataset.campaignFiles) {
+    yamlCampaignSlugs.add(c.slug)
+    const cardId = c.cardSlug ? cardIdBySlug.get(c.cardSlug) : undefined
+    const sourceId = c.sourceSlug
+      ? allSourceIdBySlug.get(c.sourceSlug)
+      : undefined
+    const issuerId = issuerIdBySlug.get(c.issuerSlug)
+    if (!issuerId) {
+      throw new Error(`campaign issuer not loaded: ${c.issuerSlug}`)
+    }
+
+    const campaignValues = {
+      issuerId,
+      cardId: cardId ?? null,
+      campaignName: c.campaignName,
+      campaignType: c.campaignType,
+      requiresRegistration: c.requiresRegistration,
+      registrationChannel: c.registrationChannel ?? null,
+      registrationDeadline: c.registrationDeadline ?? null,
+      effectiveStart: c.effectiveStart,
+      effectiveEnd: c.effectiveEnd,
+      status: c.status,
+      sourceId: sourceId ?? null,
+      notes: c.notes ?? null,
+    }
+
+    const existing = await db
+      .select({ id: campaigns.id })
+      .from(campaigns)
+      .where(eq(campaigns.slug, c.slug))
+    if (existing[0]) {
+      await db
+        .update(campaigns)
+        .set({ ...campaignValues, updatedAt: new Date() })
+        .where(eq(campaigns.slug, c.slug))
+      campaignIdBySlug.set(c.slug, existing[0].id)
+      report.campaigns.updated++
+    } else {
+      const inserted = await db
+        .insert(campaigns)
+        .values({ slug: c.slug, ...campaignValues })
+        .returning({ id: campaigns.id })
+      const id = inserted[0]?.id
+      if (!id) throw new Error(`campaign insert returned no id: ${c.slug}`)
+      campaignIdBySlug.set(c.slug, id)
+      report.campaigns.inserted++
+    }
+  }
+
+  // Phase D: rules + welcome offers per card
+  const yamlRuleSlugs = new Set<string>()
+  const yamlWelcomeOfferSlugs = new Set<string>()
+
+  for (const { data } of dataset.cardFiles) {
+    const cardId = cardIdBySlug.get(data.card.slug)
+    if (!cardId) continue
+    const sourceIdBySlug = sourceIdBySlugByCard.get(data.card.slug) ?? new Map()
+
     for (const rule of data.rules) {
       yamlRuleSlugs.add(rule.slug)
       const verdict = await syncRule(
@@ -302,6 +379,7 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
         sourceIdBySlug,
         currencyIdBySlug,
         categoryIdBySlug,
+        campaignIdBySlug,
       )
       if (verdict.refusal) {
         report.refusals.push(verdict.refusal)
@@ -313,28 +391,66 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
         report.unchanged++
       }
     }
+
+    for (const wo of data.welcomeOffers ?? []) {
+      yamlWelcomeOfferSlugs.add(wo.slug)
+      const verdict = await syncWelcomeOffer(db, wo, cardId, sourceIdBySlug)
+      if (verdict === "inserted") report.welcomeOffers.inserted++
+      else if (verdict === "updated") report.welcomeOffers.updated++
+    }
   }
 
-  // ---- Archive rules that disappeared from YAML ----
-  // Only touch rules currently active (non-archived). Archived stays archived.
+  // Phase E: archive missing rules / welcome offers / campaigns
   const dbRules = await db
     .select({ id: rewardRules.id, slug: rewardRules.slug, status: rewardRules.status })
     .from(rewardRules)
-
-  const toArchive = dbRules.filter(
+  const toArchiveRules = dbRules.filter(
     (r) => r.status !== "archived" && !yamlRuleSlugs.has(r.slug),
   )
-  if (toArchive.length > 0) {
+  if (toArchiveRules.length > 0) {
     await db
       .update(rewardRules)
       .set({ status: "archived", updatedAt: new Date() })
+      .where(inArray(rewardRules.id, toArchiveRules.map((r) => r.id)))
+    report.archived = toArchiveRules.length
+  }
+
+  const dbWelcomeOffers = await db
+    .select({
+      id: welcomeOffers.id,
+      slug: welcomeOffers.slug,
+      status: welcomeOffers.status,
+    })
+    .from(welcomeOffers)
+  const toArchiveWelcomeOffers = dbWelcomeOffers.filter(
+    (w) => w.status !== "archived" && !yamlWelcomeOfferSlugs.has(w.slug),
+  )
+  if (toArchiveWelcomeOffers.length > 0) {
+    await db
+      .update(welcomeOffers)
+      .set({ status: "archived", updatedAt: new Date() })
       .where(
-        inArray(
-          rewardRules.id,
-          toArchive.map((r) => r.id),
-        ),
+        inArray(welcomeOffers.id, toArchiveWelcomeOffers.map((w) => w.id)),
       )
-    report.archived = toArchive.length
+    report.welcomeOffers.archived = toArchiveWelcomeOffers.length
+  }
+
+  const dbCampaigns = await db
+    .select({
+      id: campaigns.id,
+      slug: campaigns.slug,
+      status: campaigns.status,
+    })
+    .from(campaigns)
+  const toArchiveCampaigns = dbCampaigns.filter(
+    (c) => c.status !== "archived" && !yamlCampaignSlugs.has(c.slug),
+  )
+  if (toArchiveCampaigns.length > 0) {
+    await db
+      .update(campaigns)
+      .set({ status: "archived", updatedAt: new Date() })
+      .where(inArray(campaigns.id, toArchiveCampaigns.map((c) => c.id)))
+    report.campaigns.archived = toArchiveCampaigns.length
   }
 
   return report
@@ -353,6 +469,7 @@ async function syncRule(
   sourceIdBySlug: Map<string, string>,
   currencyIdBySlug: Map<string, string>,
   categoryIdBySlug: Map<string, string>,
+  campaignIdBySlug: Map<string, string>,
 ): Promise<RuleVerdict> {
   const sourceId = sourceIdBySlug.get(yamlRule.sourceSlug)
   if (!sourceId) {
@@ -364,6 +481,9 @@ async function syncRule(
   }
   const categoryId = yamlRule.categorySlug
     ? categoryIdBySlug.get(yamlRule.categorySlug)
+    : undefined
+  const campaignId = yamlRule.campaignSlug
+    ? campaignIdBySlug.get(yamlRule.campaignSlug)
     : undefined
 
   let supersedesRuleId: string | undefined
@@ -390,6 +510,7 @@ async function syncRule(
     isForeignCurrency: yamlRule.isForeignCurrency ?? null,
     requiresActivation: yamlRule.requiresActivation,
     requiresRegistration: yamlRule.requiresRegistration,
+    campaignId,
     capAmountHkd: yamlRule.cap?.amountHkd?.toString(),
     capRewardAmount: yamlRule.cap?.rewardAmount?.toString(),
     capPeriod: yamlRule.cap?.period,
@@ -431,6 +552,7 @@ async function syncRule(
     effectiveEnd: insertValues.effectiveEnd ?? null,
     supersedesRuleId: insertValues.supersedesRuleId ?? null,
     categoryId: insertValues.categoryId ?? null,
+    campaignId: insertValues.campaignId ?? null,
   }
 
   const economicChanges = ECONOMIC_RULE_FIELDS.filter(
@@ -461,6 +583,56 @@ async function syncRule(
     .where(eq(rewardRules.slug, yamlRule.slug))
 
   return { action: "updated" }
+}
+
+// ---- per-welcome-offer sync ----
+
+async function syncWelcomeOffer(
+  db: DB,
+  wo: WelcomeOfferEntry,
+  cardId: string,
+  sourceIdBySlug: Map<string, string>,
+): Promise<"inserted" | "updated"> {
+  const sourceId = sourceIdBySlug.get(wo.sourceSlug)
+  if (!sourceId) {
+    throw new Error(
+      `welcome offer sourceSlug=${wo.sourceSlug} not in this card's sources`,
+    )
+  }
+
+  const values = {
+    cardId,
+    offerName: wo.offerName,
+    offerType: wo.offerType,
+    tiers: wo.tiers,
+    estimatedValueHkd: wo.estimatedValueHkd?.toString(),
+    estimationNote: wo.estimationNote,
+    applicationChannel: wo.applicationChannel,
+    newCustomerOnly: wo.newCustomerOnly,
+    existingCustomerRestrictionNote: wo.existingCustomerRestrictionNote,
+    annualFeeRequired: wo.annualFeeRequired,
+    requiresApplyWithCode: wo.requiresApplyWithCode,
+    effectiveStart: wo.effectiveStart,
+    effectiveEnd: wo.effectiveEnd,
+    status: wo.status,
+    confidenceScore: wo.confidenceScore.toFixed(3),
+    sourceId,
+    notes: wo.notes,
+  }
+
+  const existing = await db
+    .select({ id: welcomeOffers.id })
+    .from(welcomeOffers)
+    .where(eq(welcomeOffers.slug, wo.slug))
+  if (existing[0]) {
+    await db
+      .update(welcomeOffers)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(welcomeOffers.slug, wo.slug))
+    return "updated"
+  }
+  await db.insert(welcomeOffers).values({ slug: wo.slug, ...values })
+  return "inserted"
 }
 
 // Loose equality used to detect economic change.

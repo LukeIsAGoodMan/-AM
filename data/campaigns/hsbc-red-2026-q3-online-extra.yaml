@@ -1,0 +1,20 @@
+slug: hsbc-red-2026-q3-online-extra
+issuerSlug: hsbc
+cardSlug: hsbc-red
+
+campaignName: HSBC Red — Q3 2026 Online Extra 2%
+campaignType: online
+requiresRegistration: true
+registrationChannel: app
+registrationDeadline: 2026-09-30
+effectiveStart: 2026-07-01
+effectiveEnd: 2026-09-30
+status: approved
+sourceSlug: hsbc-red-official-page
+
+notes: |
+  M10 demo campaign — stacks +2% on top of standard 4% online bonus,
+  capped at HKD 30k eligible spend during the campaign window. User must
+  register via HSBC HK app before 2026-09-30 for the bonus to apply.
+  Calculator gate: rule's campaignId must appear in
+  userContext.activatedCampaignIds.

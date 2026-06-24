@@ -30,6 +30,11 @@ export type ResolvedRule = {
   requiresActivation: boolean
   requiresRegistration: boolean
 
+  // M10: campaign attachment. If non-null, calculator skips this rule unless
+  // user_context.activatedCampaignIds includes this id. Independent of
+  // requiresActivation/Registration — both gates apply when both fire.
+  campaignId: string | null
+
   // M3: accrual key for tiered formulas. Defaults to ruleId in mapping code;
   // M4 grouped tiers may share a key across rules.
   accrualKey: string

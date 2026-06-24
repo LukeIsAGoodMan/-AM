@@ -47,6 +47,14 @@ import {
 //   - cards.qualitative_features jsonb — features the calculator can't
 //     express but the future Q&A layer needs (no_fx_fee, lounge_visits,
 //     highlights_zh, good_for tags, etc.). Per PRD §6.2.
+//
+// M10 additions:
+//   - welcome_offers table (PRD §6.8) — tiered welcome offers with goal-
+//     based payouts. Distinct from reward_rules: one-time goals, not
+//     per-transaction earn.
+//   - campaigns table (PRD §6.9) — temporary issuer-side promos.
+//   - reward_rules.campaign_id (FK) — campaign_bonus rules attach here;
+//     calculator skips them unless activatedCampaignIds includes the id.
 
 export const issuers = pgTable("issuers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -225,6 +233,13 @@ export const rewardRules = pgTable("reward_rules", {
   exclusiveGroup: text("exclusive_group"),
   priority: integer("priority").default(100).notNull(),
 
+  // M10: rule belongs to a campaign — calculator skips unless
+  // user_context.activatedCampaignIds includes this id. Independent of
+  // requires_activation/registration → activated_rule_ids (per-rule).
+  campaignId: uuid("campaign_id").references((): AnyPgColumn => campaigns.id, {
+    onDelete: "set null",
+  }),
+
   // M2: caps (single-rule scope; M4 adds cap_scope + cap_shared_group for stacking)
   capAmountHkd: numeric("cap_amount_hkd", { precision: 14, scale: 2 }),
   capRewardAmount: numeric("cap_reward_amount", { precision: 14, scale: 4 }),
@@ -266,6 +281,86 @@ export const rewardRules = pgTable("reward_rules", {
   ),
 ])
 
+export const campaigns = pgTable("campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  issuerId: uuid("issuer_id")
+    .notNull()
+    .references(() => issuers.id, { onDelete: "cascade" }),
+  // Null = applies across multiple cards under the issuer (per PRD §6.9).
+  cardId: uuid("card_id").references((): AnyPgColumn => cards.id, {
+    onDelete: "set null",
+  }),
+  campaignName: text("campaign_name").notNull(),
+  campaignType: text("campaign_type").notNull(), // online / dining / overseas / merchant / app_registration / general / other
+  requiresRegistration: boolean("requires_registration")
+    .default(false)
+    .notNull(),
+  registrationChannel: text("registration_channel"), // app / website / sms / none / unknown
+  registrationDeadline: date("registration_deadline"),
+  effectiveStart: date("effective_start").notNull(),
+  effectiveEnd: date("effective_end").notNull(),
+  status: text("status").default("draft").notNull(),
+  sourceId: uuid("source_id").references(() => sourceDocuments.id, {
+    onDelete: "restrict",
+  }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+})
+
+export const welcomeOffers = pgTable("welcome_offers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  cardId: uuid("card_id")
+    .notNull()
+    .references(() => cards.id, { onDelete: "cascade" }),
+  offerName: text("offer_name").notNull(),
+  offerType: text("offer_type").notNull(), // cashback / miles / points / gift / voucher / fee_waiver / other
+  // jsonb structure validated by WelcomeOfferTiersSchema (PRD §6.8):
+  //   [{ minSpendHkd, withinDays, reward: { type, ... }, isAdditive }, ...]
+  tiers: jsonb("tiers").notNull(),
+  estimatedValueHkd: numeric("estimated_value_hkd", {
+    precision: 14,
+    scale: 2,
+  }),
+  estimationNote: text("estimation_note"),
+  applicationChannel: text("application_channel"), // online / app / branch / referral / any / unknown
+  newCustomerOnly: boolean("new_customer_only").default(false).notNull(),
+  existingCustomerRestrictionNote: text("existing_customer_restriction_note"),
+  annualFeeRequired: boolean("annual_fee_required").default(false).notNull(),
+  requiresApplyWithCode: text("requires_apply_with_code"),
+  effectiveStart: date("effective_start"),
+  effectiveEnd: date("effective_end"),
+  status: text("status").default("draft").notNull(),
+  confidenceScore: numeric("confidence_score", { precision: 4, scale: 3 })
+    .default("0.500")
+    .notNull(),
+  sourceId: uuid("source_id").references(() => sourceDocuments.id, {
+    onDelete: "restrict",
+  }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}, (table) => [
+  check(
+    "welcome_offers_approved_must_have_source",
+    sql`${table.status} <> 'approved' OR ${table.sourceId} IS NOT NULL`,
+  ),
+])
+
+export type Campaign = typeof campaigns.$inferSelect
+export type NewCampaign = typeof campaigns.$inferInsert
+export type WelcomeOffer = typeof welcomeOffers.$inferSelect
+export type NewWelcomeOffer = typeof welcomeOffers.$inferInsert
 export type SourceChunk = typeof sourceChunks.$inferSelect
 export type NewSourceChunk = typeof sourceChunks.$inferInsert
 

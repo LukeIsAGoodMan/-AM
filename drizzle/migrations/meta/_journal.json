@@ -57,6 +57,13 @@
       "when": 1781791377229,
       "tag": "0007_nasty_mandarin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782306794520,
+      "tag": "0008_tricky_katie_power",
+      "breakpoints": true
     }
   ]
 }

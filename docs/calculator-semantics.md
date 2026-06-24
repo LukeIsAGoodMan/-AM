@@ -6,7 +6,7 @@ Companion to:
 - [prd.md §8](./prd.md) — high-level algorithm description.
 - Implementation lives in `src/lib/calculator/` (entry: `calculate.ts`).
 
-Updated as of: **M7** (merchant resolver — category confidence in result).
+Updated as of: **M10** (campaign gate via `activatedCampaignIds`).
 
 ---
 
@@ -60,9 +60,9 @@ The calculator does NOT derive `isOnline` or `isForeignCurrency`; those must com
 ```ts
 {
   cardId: string
-  selectedCategorySlugs?: string[]    // M5+ — for user-selected category bonus
-  activatedCampaignIds?: string[]     // M10 — campaign opt-in
-  activatedRuleIds?: string[]         // M3 — rule-level opt-in (activation/registration)
+  selectedCategorySlugs?: string[]    // future — for user-selected category bonus
+  activatedCampaignIds?: string[]     // M10 — campaign opt-in (rule.campaignId)
+  activatedRuleIds?: string[]         // M3 — rule-level opt-in (requiresActivation/Registration)
   capUsage?: Record<string, number>   // see §6
 }
 ```
@@ -140,7 +140,7 @@ The calculator implements PRD §8.2 in 8 sequential steps. Status legend: ✅ im
 Step 1  Merchant resolver        ✅ caller does it; passes confidence on txn
 Step 2  Filter approved + date   🚧 status filter ✅; date range filter ⏳ next
 Step 3  Match conditions         ✅
-Step 3b Activation gate          ✅
+Step 3b Activation + campaign    ✅ (both gates independent; both must pass)
 Step 4  Exclusions               ✅
 Step 5  Stacking                 ✅
 Step 6  Hard cap                 ✅ (basis='spending' only; 'reward'/'transaction_count' throw)
@@ -168,11 +168,15 @@ Critical principle: **unknown txn value does NOT satisfy a non-null rule require
 
 `deriveIsOverseas(txn)` returns `undefined` if `txn.countryRegion` is missing or `"UNKNOWN"`, else `(countryRegion !== "HK")`.
 
-### 4.3 Step 3b — Activation gate
+### 4.3 Step 3b — Activation + campaign gates
 
-After matching, if `rule.requiresActivation || rule.requiresRegistration`, the rule is skipped unless `rule.ruleId ∈ activatedRuleIds`.
+Two independent gates run after match. Both must pass for the rule to survive:
 
-Both flags have the same calculator behavior; the distinction is semantic (data layer telling you "activation of card" vs "registration for a bonus campaign").
+1. **Per-rule activation/registration gate** — if `rule.requiresActivation || rule.requiresRegistration`, the rule is skipped unless `rule.ruleId ∈ activatedRuleIds`. The two flags behave identically in the calculator; the distinction is semantic (data layer telling you "activation of card" vs "registration for a bonus campaign").
+
+2. **Campaign gate (M10)** — if `rule.campaignId !== null`, the rule is skipped unless `rule.campaignId ∈ activatedCampaignIds`. Used by `rule_type='campaign_bonus'` rules that belong to a time-bounded campaign (per PRD §6.9).
+
+A `campaign_bonus` rule may set BOTH `requiresRegistration=true` AND `campaignId=X` — both gates fire and both must pass.
 
 ### 4.4 Step 4 — Exclusions
 

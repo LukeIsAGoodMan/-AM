@@ -54,3 +54,48 @@ rules:
     confidenceScore: 0.85
     notes: |
       Tax / e-wallet topup exclusions arrive in M4 (exclusion rules with appliesTo).
+
+  - slug: hsbc-red__q3_2026_online_extra
+    ruleName: Q3 2026 online extra 2% (campaign)
+    ruleType: campaign_bonus
+    status: approved
+    campaignSlug: hsbc-red-2026-q3-online-extra
+    rewardFormula:
+      type: simple_percent
+      rate: 0.02
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: online_local
+    isOnline: true
+    cap:
+      amountHkd: 30000
+      period: campaign
+      basis: spending
+    sourceSlug: hsbc-red-official-page
+    confidenceScore: 0.7
+    priority: 70
+    notes: |
+      Stacks on top of the standard 4% online bonus. Only awarded when the
+      user has registered for this campaign (calculator gates on
+      activatedCampaignIds containing the campaign id).
+
+welcomeOffers:
+  - slug: hsbc-red__welcome_2026
+    offerName: HSBC Red welcome — HK$300 RewardCash
+    offerType: cashback
+    tiers:
+      - minSpendHkd: 4000
+        withinDays: 60
+        reward:
+          type: cashback_hkd
+          amount: 300
+        isAdditive: false
+    estimatedValueHkd: 300
+    estimationNote: |
+      Conservative — assumes single-tier reward. Real card adds bonus tiers
+      for higher spend; modeled minimally here.
+    applicationChannel: any
+    newCustomerOnly: true
+    effectiveStart: 2026-01-01
+    status: approved
+    sourceSlug: hsbc-red-official-page
+    confidenceScore: 0.85

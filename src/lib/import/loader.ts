@@ -2,10 +2,12 @@ import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { parse as parseYaml } from "yaml"
 import {
+  CampaignFileSchema,
   CardFileSchema,
   CategoryFileSchema,
   IssuerFileSchema,
   RewardCurrencyFileSchema,
+  type CampaignFile,
   type CardFile,
   type IssuerFile,
 } from "./schemas"
@@ -20,6 +22,7 @@ export type LoadedDataset = {
   currencies: ReturnType<typeof loadCurrencies>
   categories: ReturnType<typeof loadCategories>
   cardFiles: { path: string; data: CardFile }[]
+  campaignFiles: { path: string; data: CampaignFile }[]
 }
 
 export function loadAll(rootDir = DATA_ROOT): LoadedDataset {
@@ -28,6 +31,7 @@ export function loadAll(rootDir = DATA_ROOT): LoadedDataset {
     currencies: loadCurrencies(rootDir),
     categories: loadCategories(rootDir),
     cardFiles: loadCardFiles(rootDir),
+    campaignFiles: loadCampaignFiles(rootDir),
   }
 }
 
@@ -64,6 +68,20 @@ function loadCardFiles(rootDir: string): { path: string; data: CardFile }[] {
     const path = join(dir, f)
     const raw = parseFile(path)
     out.push({ path, data: parseWith(CardFileSchema, raw, path) })
+  }
+  return out
+}
+
+function loadCampaignFiles(
+  rootDir: string,
+): { path: string; data: CampaignFile }[] {
+  const dir = join(rootDir, "campaigns")
+  if (!existsSync(dir)) return []
+  const out: { path: string; data: CampaignFile }[] = []
+  for (const f of yamlFiles(dir)) {
+    const path = join(dir, f)
+    const raw = parseFile(path)
+    out.push({ path, data: parseWith(CampaignFileSchema, raw, path) })
   }
   return out
 }

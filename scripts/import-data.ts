@@ -29,7 +29,13 @@ async function main() {
 
   console.log("✓ import complete")
   console.log(
-    `  inserted=${report.inserted}, updated=${report.updated}, unchanged=${report.unchanged}, archived=${report.archived}`,
+    `  rules:           inserted=${report.inserted}, updated=${report.updated}, unchanged=${report.unchanged}, archived=${report.archived}`,
+  )
+  console.log(
+    `  welcome offers:  inserted=${report.welcomeOffers.inserted}, updated=${report.welcomeOffers.updated}, archived=${report.welcomeOffers.archived}`,
+  )
+  console.log(
+    `  campaigns:       inserted=${report.campaigns.inserted}, updated=${report.campaigns.updated}, archived=${report.campaigns.archived}`,
   )
 }
 
