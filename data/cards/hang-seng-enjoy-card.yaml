@@ -1,28 +1,171 @@
 issuerSlug: hang-seng
+
 card:
   slug: hang-seng-enjoy-card
   cardNameEn: Hang Seng enJoy Card
+  cardNameZh: 恒生 enJoy 卡
   network: Mastercard
+  cardLevel: platinum
   annualFeeHkd: 0
-  status: draft
+  status: active
   officialUrl: https://www.hangseng.com
-  notes: >-
-    Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
+  notes: |
+    Pre-M14 modeling — selected-category demo. Card lets user pick
+    N categories at signup; only those rules earn the 4% bonus.
 
-    Rules NOT modeled — status=draft. Phase 2 LLM extraction + reviewer approval will populate
-    rules.
-
-    Hand-promote to approved by adding rules[] and changing status above.
+    Modeled as one rule per common pickable category, each with
+    requiresSelectedCategory=true. Real card uses yuu points; we
+    convert to hkd_cashback at ~1% effective for simplicity.
+    Phase 2 reviewer will switch to a proper yuu_points currency.
   qualitativeFeatures:
     xlsxCategory: Rewards
     xlsxSpecialty: Retail ecosystem
-    xlsxBaseRewardText: yuu points
-    summaryZh: Hang Seng enJoy Card 是一張定位多用途的信用卡，透過 yuu points 為日常消費提供回贈或積分累積。此卡適合作為日常消費主卡，能在多種消費場景中穩定累積回贈。
-    bestUseCaseZh: 日常生活開支及一般消費
+    xlsxBaseRewardText: yuu points (modeled as cashback)
+    summaryZh: |
+      enJoy 卡讓用戶自選幾個獎賞類別，所選類別有 4% 額外回贈。日常無條件 0.4%。
+    bestUseCaseZh: 預先挑好常用類別後當主卡 — 餐飲 / 超市 / 線上等
     welcomeOfferDraft:
       spendRequirementText: HK$6,000
       bonusType: Points
       bonusValueText: 120k yuu points
       periodDays: 90
-sources: []
-rules: []
+
+sources:
+  - slug: hang-seng-enjoy-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Hang Seng enJoy Card — official page
+    url: https://www.hangseng.com
+    language: mixed
+    status: active
+    notes: Placeholder URL. Replace with deep link / T&C PDF in Phase 2.
+
+rules:
+  - slug: hang-seng-enjoy__base_earn
+    ruleName: Base earn (0.4%)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.004
+    rewardCurrencySlug: hkd_cashback
+    sourceSlug: hang-seng-enjoy-official-page
+    confidenceScore: 0.7
+    priority: 100
+
+  # The 4% bonus is split into one rule per common pickable category so the
+  # calculator's selected-category gate (requiresSelectedCategory) filters
+  # per-category cleanly.
+  - slug: hang-seng-enjoy__selected_dining_local
+    ruleName: Selected category — dining local 4%
+    ruleType: selected_category_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.04
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: dining_local
+    requiresSelectedCategory: true
+    cap:
+      amountHkd: 30000
+      period: year
+      basis: spending
+    sourceSlug: hang-seng-enjoy-official-page
+    confidenceScore: 0.6
+    priority: 80
+
+  - slug: hang-seng-enjoy__selected_online_local
+    ruleName: Selected category — online local 4%
+    ruleType: selected_category_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.04
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: online_local
+    isOnline: true
+    requiresSelectedCategory: true
+    cap:
+      amountHkd: 30000
+      period: year
+      basis: spending
+    sourceSlug: hang-seng-enjoy-official-page
+    confidenceScore: 0.6
+    priority: 80
+
+  - slug: hang-seng-enjoy__selected_supermarket
+    ruleName: Selected category — supermarket 4%
+    ruleType: selected_category_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.04
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: supermarket
+    requiresSelectedCategory: true
+    cap:
+      amountHkd: 30000
+      period: year
+      basis: spending
+    sourceSlug: hang-seng-enjoy-official-page
+    confidenceScore: 0.6
+    priority: 80
+
+  - slug: hang-seng-enjoy__selected_streaming
+    ruleName: Selected category — streaming/subscription 4%
+    ruleType: selected_category_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.04
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: streaming_subscription
+    isOnline: true
+    requiresSelectedCategory: true
+    cap:
+      amountHkd: 30000
+      period: year
+      basis: spending
+    sourceSlug: hang-seng-enjoy-official-page
+    confidenceScore: 0.6
+    priority: 80
+
+  - slug: hang-seng-enjoy__selected_taxi_ride_hailing
+    ruleName: Selected category — taxi / ride-hailing 4%
+    ruleType: selected_category_bonus
+    status: approved
+    rewardFormula:
+      type: simple_percent
+      rate: 0.04
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: taxi_ride_hailing
+    requiresSelectedCategory: true
+    cap:
+      amountHkd: 30000
+      period: year
+      basis: spending
+    sourceSlug: hang-seng-enjoy-official-page
+    confidenceScore: 0.6
+    priority: 80
+
+  - slug: hang-seng-enjoy__tax_exclusion
+    ruleName: Tax / government — bonus excluded
+    ruleType: exclusion
+    status: approved
+    rewardFormula:
+      type: no_reward
+      reason: Tax / government does not earn bonus.
+    rewardCurrencySlug: hkd_cashback
+    categorySlug: tax_government
+    appliesTo:
+      - category_bonus
+      - selected_category_bonus
+      - online_bonus
+      - overseas_bonus
+      - foreign_currency_bonus
+      - campaign_bonus
+      - merchant_bonus
+    priority: 50
+    sourceSlug: hang-seng-enjoy-official-page
+    confidenceScore: 0.75
+    notes: base_earn still applies on tax.

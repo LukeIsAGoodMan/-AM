@@ -141,6 +141,10 @@ const RuleEntrySchema = z.object({
   // Activation gating
   requiresActivation: z.boolean().default(false),
   requiresRegistration: z.boolean().default(false),
+  // Selected-category gating (cards where the user picks N categories at
+  // signup, e.g. Hang Seng enJoy). Combined with categorySlug: rule applies
+  // only when its category was picked.
+  requiresSelectedCategory: z.boolean().default(false),
 
   // M10: campaign attachment — calculator gates by activatedCampaignIds.
   campaignSlug: SlugSchema.optional(),

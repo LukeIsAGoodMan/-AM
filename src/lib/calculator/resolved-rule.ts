@@ -30,6 +30,12 @@ export type ResolvedRule = {
   requiresActivation: boolean
   requiresRegistration: boolean
 
+  // Selected-category gating (cards like Hang Seng enJoy / Citi Cash Back+
+  // where the user picks N categories). Combined with categorySlug:
+  // rule applies only when rule.categorySlug ∈ activatedRuleIds? NO —
+  // → ∈ user_context.selectedCategorySlugs.
+  requiresSelectedCategory: boolean
+
   // M10: campaign attachment. If non-null, calculator skips this rule unless
   // user_context.activatedCampaignIds includes this id. Independent of
   // requiresActivation/Registration — both gates apply when both fire.

@@ -221,6 +221,12 @@ export const rewardRules = pgTable("reward_rules", {
   requiresRegistration: boolean("requires_registration")
     .default(false)
     .notNull(),
+  // Post-M11: cards that let the user pick N categories at signup
+  // (Hang Seng enJoy, Citi Cash Back+, etc.). Calculator skips unless
+  // rule.categorySlug ∈ user_context.selectedCategorySlugs.
+  requiresSelectedCategory: boolean("requires_selected_category")
+    .default(false)
+    .notNull(),
 
   // M4: stacking + exclusion (PRD §8.2 steps 4 + 5).
   // - applies_to: for rule_type='exclusion', the list of OTHER rule_types

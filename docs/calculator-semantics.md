@@ -140,7 +140,7 @@ The calculator implements PRD §8.2 in 8 sequential steps. Status legend: ✅ im
 Step 1  Merchant resolver        ✅ caller does it; passes confidence on txn
 Step 2  Filter approved + date   🚧 status filter ✅; date range filter ⏳ next
 Step 3  Match conditions         ✅
-Step 3b Activation + campaign    ✅ (both gates independent; both must pass)
+Step 3b Activation + selected-category + campaign ✅ (gates independent; all must pass)
 Step 4  Exclusions               ✅
 Step 5  Stacking                 ✅
 Step 6  Hard cap                 ✅ (basis='spending' only; 'reward'/'transaction_count' throw)
@@ -168,15 +168,17 @@ Critical principle: **unknown txn value does NOT satisfy a non-null rule require
 
 `deriveIsOverseas(txn)` returns `undefined` if `txn.countryRegion` is missing or `"UNKNOWN"`, else `(countryRegion !== "HK")`.
 
-### 4.3 Step 3b — Activation + campaign gates
+### 4.3 Step 3b — Activation + selected-category + campaign gates
 
-Two independent gates run after match. Both must pass for the rule to survive:
+Three independent gates run after match. All applicable gates must pass for the rule to survive:
 
 1. **Per-rule activation/registration gate** — if `rule.requiresActivation || rule.requiresRegistration`, the rule is skipped unless `rule.ruleId ∈ activatedRuleIds`. The two flags behave identically in the calculator; the distinction is semantic (data layer telling you "activation of card" vs "registration for a bonus campaign").
 
-2. **Campaign gate (M10)** — if `rule.campaignId !== null`, the rule is skipped unless `rule.campaignId ∈ activatedCampaignIds`. Used by `rule_type='campaign_bonus'` rules that belong to a time-bounded campaign (per PRD §6.9).
+2. **Selected-category gate** — if `rule.requiresSelectedCategory`, the rule is skipped unless `rule.categorySlug ∈ selectedCategorySlugs`. Used by cards where the user picks N categories at signup (Hang Seng enJoy, Citi Cash Back+ family). A rule with `requiresSelectedCategory=true` but `categorySlug=null` silently fails closed — misconfiguration that should be caught at YAML validation, not at compute time.
 
-A `campaign_bonus` rule may set BOTH `requiresRegistration=true` AND `campaignId=X` — both gates fire and both must pass.
+3. **Campaign gate (M10)** — if `rule.campaignId !== null`, the rule is skipped unless `rule.campaignId ∈ activatedCampaignIds`. Used by `rule_type='campaign_bonus'` rules that belong to a time-bounded campaign (per PRD §6.9).
+
+A `campaign_bonus` rule may set multiple gates simultaneously (e.g. `requiresRegistration=true` AND `campaignId=X`) — every applicable gate must pass.
 
 ### 4.4 Step 4 — Exclusions
 

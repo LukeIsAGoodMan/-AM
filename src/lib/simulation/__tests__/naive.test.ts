@@ -25,6 +25,7 @@ const baseRule = (
   isForeignCurrency: null,
   requiresActivation: false,
   requiresRegistration: false,
+  requiresSelectedCategory: false,
   campaignId: null,
   accrualKey: o.ruleId,
   cap: null,

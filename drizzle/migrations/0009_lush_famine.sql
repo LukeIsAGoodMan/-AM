@@ -1,0 +1,1 @@
+ALTER TABLE "reward_rules" ADD COLUMN "requires_selected_category" boolean DEFAULT false NOT NULL;

@@ -20,6 +20,7 @@ const baseRule = (
   isForeignCurrency: null,
   requiresActivation: false,
   requiresRegistration: false,
+  requiresSelectedCategory: false,
   campaignId: null,
   accrualKey: overrides.ruleId,
   cap: null,
@@ -614,6 +615,100 @@ describe("calculate — M7 categoryResolutionConfidence", () => {
     )
     expect(res.rewardValueHkd).toBe(0)
     expect(res.confidenceScore).toBe(0.3)
+  })
+})
+
+// ---------- Selected-category gate ----------
+
+describe("calculate — selected-category gate", () => {
+  // Hang Seng enJoy-style: user picks N categories at signup; only those
+  // category-specific bonus rules apply.
+  const baseEarn = baseRule({
+    ruleId: "enjoy__base",
+    formula: { type: "simple_percent", rate: 0.004 },
+  })
+  const dining = baseRule({
+    ruleId: "enjoy__sel_dining",
+    ruleType: "selected_category_bonus",
+    formula: { type: "simple_percent", rate: 0.04 },
+    categorySlug: "dining_local",
+    requiresSelectedCategory: true,
+    priority: 80,
+  })
+  const online = baseRule({
+    ruleId: "enjoy__sel_online",
+    ruleType: "selected_category_bonus",
+    formula: { type: "simple_percent", rate: 0.04 },
+    categorySlug: "online_local",
+    isOnline: true,
+    requiresSelectedCategory: true,
+    priority: 80,
+  })
+  const rules = [baseEarn, dining, online]
+
+  it("user picked dining → dining 4% applies, online does not", () => {
+    const res = calculate(
+      "enjoy",
+      rules,
+      txn({ amountHkd: 1000, categorySlug: "dining_local" }),
+      { cardId: "enjoy", selectedCategorySlugs: ["dining_local"] },
+    )
+    // base 0.4% = 4 + dining 4% = 40 → 44
+    expect(res.rewardValueHkd).toBe(44)
+    expect(res.breakdown).toHaveLength(2)
+  })
+
+  it("user picked dining → online txn earns base only (online bonus gated out)", () => {
+    const res = calculate(
+      "enjoy",
+      rules,
+      txn({ amountHkd: 1000, categorySlug: "online_local", isOnline: true }),
+      { cardId: "enjoy", selectedCategorySlugs: ["dining_local"] },
+    )
+    expect(res.rewardValueHkd).toBe(4)
+    expect(res.breakdown).toHaveLength(1)
+    expect(res.breakdown[0]?.ruleType).toBe("base_earn")
+  })
+
+  it("user picked nothing → only base earns anywhere", () => {
+    const res = calculate(
+      "enjoy",
+      rules,
+      txn({ amountHkd: 1000, categorySlug: "dining_local" }),
+    )
+    expect(res.rewardValueHkd).toBe(4)
+  })
+
+  it("user picked both → both bonus rules fire on their respective categories", () => {
+    const ctx = {
+      cardId: "enjoy",
+      selectedCategorySlugs: ["dining_local", "online_local"],
+    }
+    const d = calculate("enjoy", rules, txn({ amountHkd: 1000, categorySlug: "dining_local" }), ctx)
+    const o = calculate(
+      "enjoy",
+      rules,
+      txn({ amountHkd: 1000, categorySlug: "online_local", isOnline: true }),
+      ctx,
+    )
+    expect(d.rewardValueHkd).toBe(44)
+    expect(o.rewardValueHkd).toBe(44)
+  })
+
+  it("misconfigured rule (requiresSelectedCategory=true, categorySlug=null) silently fails closed", () => {
+    const broken = baseRule({
+      ruleId: "enjoy__broken",
+      ruleType: "selected_category_bonus",
+      formula: { type: "simple_percent", rate: 0.04 },
+      categorySlug: null,
+      requiresSelectedCategory: true,
+    })
+    const res = calculate("enjoy", [baseEarn, broken], txn({ amountHkd: 1000 }), {
+      cardId: "enjoy",
+      // No selection but the rule is broken anyway — closed by either gate
+      selectedCategorySlugs: ["dining_local"],
+    })
+    expect(res.rewardValueHkd).toBe(4) // base only
   })
 })
 

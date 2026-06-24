@@ -40,6 +40,9 @@ export function calculate(
   const capUsage = userContext?.capUsage ?? {}
   const activatedRuleIds = new Set(userContext?.activatedRuleIds ?? [])
   const activatedCampaignIds = new Set(userContext?.activatedCampaignIds ?? [])
+  const selectedCategorySlugs = new Set(
+    userContext?.selectedCategorySlugs ?? [],
+  )
 
   // Step 2 + 3 + 3b: gather candidates that match the txn and pass activation gates.
   const matched = rules.filter((r) => {
@@ -47,6 +50,11 @@ export function calculate(
     if (!matches(r, txn)) return false
     if (r.requiresActivation || r.requiresRegistration) {
       if (!activatedRuleIds.has(r.ruleId)) return false
+    }
+    if (r.requiresSelectedCategory) {
+      // Misconfigured rules (no categorySlug) silently fail closed.
+      if (r.categorySlug === null) return false
+      if (!selectedCategorySlugs.has(r.categorySlug)) return false
     }
     // M10: campaign gate — skip campaign rules unless user opted into that campaign.
     if (r.campaignId !== null) {
