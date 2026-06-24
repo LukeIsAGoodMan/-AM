@@ -18,6 +18,7 @@
     "validate:data": "tsx scripts/validate-data.ts",
     "import:data": "tsx --env-file=.env.local scripts/import-data.ts",
     "extract:sources": "tsx --env-file=.env.local scripts/extract-sources.ts",
+    "diagnose": "tsx --env-file=.env.local scripts/diagnose.ts",
     "db:seed": "pnpm import:data"
   },
   "dependencies": {

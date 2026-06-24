@@ -424,6 +424,47 @@ Total: ~12–13 sit-downs ≈ 3 working weeks for one person.
 
 ---
 
+## Known schema gaps (defer to Phase 2 or later)
+
+Surfaced during MVP build. None block the M14 demo; flagging so they don't get forgotten.
+
+### G1 — Registration / activation time window
+
+Today's calculator gate only checks "is the rule id in `activatedRuleIds`" (boolean). Real banks scope activation to a date window: the bonus applies to txns AFTER you registered, often within a quarter/period.
+
+**Fix shape**: extend `UserCardContext.activatedRuleIds` from `string[]` → `{ ruleId: string; activatedAt: string }[]`. Calculator's step 3b compares `txn.transactionDate >= activatedAt`. Same for campaigns. Schema unchanged; user-context only.
+
+**When**: lands with Phase 2's `user_*` tables (Layer 7), since the activation event has a timestamp by then anyway.
+
+### G2 — Cap basis = `reward` (max HKD X reward per period)
+
+`apply-cap.ts` throws on `cap.basis ∈ { 'reward', 'transaction_count' }` today. Real HSBC Reward+ and several enJoy tiers cap REWARD (e.g. "max HKD 800 RewardCash / month"), not spending. Today we approximate by setting an equivalent spending cap, which over-credits in some edge cases.
+
+**Fix shape**: add the `reward` branch to `applyRuleWithCap`:
+- Convert `cap.rewardAmount` → reward-units cap (divide by `rewardCurrencyValueHkd` if cap is denominated in HKD)
+- Compute applied formula's would-be reward; cap it; back-derive the eligible portion for the period accumulator
+
+**When**: when a real card under maintenance forces it (probably during Phase 2 source extraction — reviewer hits a "max HKD 500/mo" T&C and won't accept the spending-cap approximation).
+
+### G3 — Multi-rule shared caps (`cap_shared_group`)
+
+Schema already has `cap.usageKey` so this is partly wired — different rules can name the same key and the calculator naturally sees one shared counter. What's missing:
+- `cap_shared_group` column to make the grouping explicit and queryable
+- A YAML-level convention ("these 3 category bonus rules share a HKD 60k spending cap")
+- Test fixtures (HSBC has had this pattern for tiered campaigns)
+
+**When**: as soon as a card with this pattern joins the approved set (likely during M9-equivalent batch in Phase 2).
+
+### G4 — `first_n_transactions_bonus` formula variant
+
+Listed in PRD §7 and reserved in Zod's `RewardFormulaTypes` const, but `applyFormula` doesn't switch on it. Used by Citi Octopus and several "first 3 transactions per month" promos.
+
+**Fix shape**: add the `case "first_n_transactions_bonus":` arm; gate against a per-month transaction counter the simulator/user-context advances. Requires the same period-token scoping the cap rollover uses.
+
+**When**: when Citi Octopus or similar joins the approved set.
+
+---
+
 ## Phase 3+ teaser (not designed yet)
 
 - **Phase 3**: Public Wallet Mode beta. User submits owned cards + a transaction → ranking. Captures `merchant_datapoints` from real users.
