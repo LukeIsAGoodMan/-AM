@@ -45,8 +45,10 @@ export const FIXTURES: Fixture[] = [
     id: "klook-5k-online",
     label: "Klook HKD 5000 (online, local)",
     description:
-      "PRD §20 step 6 — merchant resolver fills category travel_ota. " +
-      "Expect Citi PremierMiles / SC Cathay in top of ranking.",
+      "PRD §20 step 6 — merchant resolver fills category travel_ota at " +
+      "confidence 0.90 [high]. Current ranking: HSBC EveryMile > SC Cathay > " +
+      "SC SimplyCash > Citi PremierMiles. All medium confidence (rule scores " +
+      "cap the result at 0.90).",
     formInput: {
       amountHkd: 5000,
       merchantName: "Klook",

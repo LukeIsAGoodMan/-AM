@@ -390,8 +390,26 @@ export function CalculatorTestClient({ data }: { data: CalcTestData }) {
         </Card>
       </div>
 
-      {/* Right: ranked output + compare panel */}
-      <div className="space-y-4 lg:col-span-5">
+      {/* Right: compare panel (when active) + ranked output. With 11 cards
+          the ranking gets tall, so the column scrolls independently — and
+          compare goes on top because that's where the user's attention is
+          when they've pinned two cards for comparison. */}
+      <div className="space-y-4 lg:col-span-5 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1">
+        {compareSlugs[0] && compareSlugs[1] && txn ? (
+          <ComparePanel
+            txn={txn}
+            cardA={
+              ranked.find((r) => r.card.cardSlug === compareSlugs[0]) ??
+              computeFromData(data, compareSlugs[0], txn, perCardCtx)
+            }
+            cardB={
+              ranked.find((r) => r.card.cardSlug === compareSlugs[1]) ??
+              computeFromData(data, compareSlugs[1], txn, perCardCtx)
+            }
+            sourcesById={data.sourcesById}
+          />
+        ) : null}
+
         {!txn ? (
           <Card>
             <CardContent>
@@ -409,7 +427,7 @@ export function CalculatorTestClient({ data }: { data: CalcTestData }) {
         ) : (
           <Card>
             <CardHeader>
-              <CardTitle>Ranking</CardTitle>
+              <CardTitle>Ranking ({ranked.length})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {ranked.map((item, i) => (
@@ -424,20 +442,7 @@ export function CalculatorTestClient({ data }: { data: CalcTestData }) {
           </Card>
         )}
 
-        {compareSlugs[0] && compareSlugs[1] && txn ? (
-          <ComparePanel
-            txn={txn}
-            cardA={
-              ranked.find((r) => r.card.cardSlug === compareSlugs[0]) ??
-              computeFromData(data, compareSlugs[0], txn, perCardCtx)
-            }
-            cardB={
-              ranked.find((r) => r.card.cardSlug === compareSlugs[1]) ??
-              computeFromData(data, compareSlugs[1], txn, perCardCtx)
-            }
-            sourcesById={data.sourcesById}
-          />
-        ) : (
+        {compareSlugs[0] && compareSlugs[1] ? null : (
           <Card>
             <CardHeader>
               <CardTitle>Why this lost</CardTitle>
@@ -566,6 +571,10 @@ function CardSelectRow({
   const cardCampaigns = campaigns.filter(
     (c) => c.cardSlug === card.cardSlug || c.cardSlug === null,
   )
+  const ctxActiveCount =
+    ctx.activatedRuleIds.length +
+    ctx.activatedCampaignIds.length +
+    ctx.selectedCategorySlugs.length
 
   return (
     <li className={cn("py-2", !selected && "opacity-60")}>
@@ -580,6 +589,11 @@ function CardSelectRow({
           <div className="flex items-center gap-2">
             <span className="font-medium text-neutral-900">{card.cardNameEn}</span>
             <Badge tone="gray">{card.issuerSlug}</Badge>
+            {ctxActiveCount > 0 ? (
+              <Badge tone="green" className="text-[10px]">
+                ctx +{ctxActiveCount}
+              </Badge>
+            ) : null}
             <button
               type="button"
               onClick={onToggleCompare}
