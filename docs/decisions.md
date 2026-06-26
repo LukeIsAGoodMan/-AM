@@ -106,6 +106,26 @@ PRD §18 seeded this list with 7 entries. Subsequent decisions are appended as m
 
 ---
 
+## D11 (P1) — Phase 2 extraction tables live in their own namespace, one-way dependency
+
+**Decision**: All 5 Phase 2 tables (`source_claims`, `extraction_runs`, `cross_check_groups`, `review_tasks`, `reward_rule_sources`) live in `src/db/schema/extraction.ts`. They may reference catalog tables (cards, source_documents, reward_rules) via FKs. Catalog tables MUST NOT reference back. Enforced by file structure + import direction (`catalog.ts` never imports from `extraction.ts`).
+
+**Why**: same logic as [[D7]] (user domain isolation). Catalog is stable + the calculator's input; extraction is the build-time pipeline that produces catalog rows. If catalog grew an FK into `source_claims`, deleting an extraction run would risk corrupting calculator inputs, and the MVP code would suddenly carry Phase 2 dependencies. One-way isolation means: a MVP-era developer never has to think about extraction; a Phase 2 developer can freely refactor extraction without breaking the calculator.
+
+**Knock-on**: `reward_rules.source_id` stays a scalar FK to the primary citation. Multiple supporting sources live in `reward_rule_sources` (m:n join in the extraction namespace). The calculator reads only `source_id`; the rule detail page can JOIN out to `reward_rule_sources` for provenance display, but the calculator never sees it.
+
+---
+
+## D12 (P1) — `cross_check_groups` has UNIQUE `(card_id, claim_type, key_dimension)`
+
+**Decision**: The aggregator's "group claims by dimension" output is keyed by `(card_id, claim_type, key_dimension)` and the DB enforces the uniqueness. `key_dimension` is the discriminator within a `claim_type` (e.g. `'category_slug=online_local'` for category bonuses, `'rule_type=base_earn'` for base earn).
+
+**Why**: the cross-check aggregator (P4) is going to be re-run frequently — every time a new claim lands, every time a reviewer approves something. We want re-runs to be **idempotent**: same inputs produce zero net writes, not duplicate groups that the reviewer then has to manually merge. A unique constraint converts a possible bug class (silent duplicates) into a loud error (`unique_violation`) the aggregator must explicitly handle with an upsert.
+
+**Knock-on**: P4's writer is `INSERT ... ON CONFLICT (card_id, claim_type, key_dimension) DO UPDATE`. `key_dimension` must be canonical — same logical rule from two different prompt versions must produce the same dimension string, or we get parallel groups. The P2 prompt design owns this canonicalization (lowercase, sort keys, etc.). Schema can't enforce it; tests + reviewer eyes catch drift.
+
+---
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:

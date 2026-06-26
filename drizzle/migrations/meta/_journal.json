@@ -71,6 +71,13 @@
       "when": 1782310507383,
       "tag": "0009_lush_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782453581967,
+      "tag": "0010_yellow_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }
