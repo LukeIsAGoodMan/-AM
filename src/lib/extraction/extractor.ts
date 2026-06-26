@@ -14,6 +14,7 @@ import {
   PROMPT_VERSION,
   SYSTEM_PROMPT,
   buildUserMessage,
+  parseStructuredPayload,
   type ExtractionOutput as ExtractionOutputT,
 } from "./prompt"
 
@@ -224,17 +225,39 @@ export async function extractClaimsFromChunk(
       .where(eq(extractionRuns.id, runId))
 
     if (parsed.claims.length > 0) {
-      const rows: NewSourceClaim[] = parsed.claims.map((c) => ({
-        sourceId: input.sourceId,
-        cardId: input.cardId,
-        claimType: c.claimType,
-        structuredPayload: c.structuredPayload,
-        extractedTextSnippet: c.extractedTextSnippet,
-        extractionRunId: runId!,
-        extractedBy: MODEL_ID,
-        confidenceScore: c.confidenceScore.toFixed(3),
-        status: "pending_review", // P4 aggregator picks these up
-      }))
+      // Parse the JSON-string payloads here (not in P3 / P4) so a malformed
+      // payload fails the run loudly rather than persisting garbage. If any
+      // claim's payload doesn't parse, mark the run failed and don't write
+      // any of the claims — partial writes would confuse the aggregator.
+      const rows: NewSourceClaim[] = []
+      for (const c of parsed.claims) {
+        let payload: Record<string, unknown>
+        try {
+          payload = parseStructuredPayload(c)
+        } catch (err) {
+          await db
+            .update(extractionRuns)
+            .set({
+              status: "failed",
+              errorMessage: `claim payload not valid JSON: ${(err as Error).message}`,
+              finishedAt: new Date(),
+              latencyMs,
+            })
+            .where(eq(extractionRuns.id, runId))
+          throw err
+        }
+        rows.push({
+          sourceId: input.sourceId,
+          cardId: input.cardId,
+          claimType: c.claimType,
+          structuredPayload: payload,
+          extractedTextSnippet: c.extractedTextSnippet,
+          extractionRunId: runId,
+          extractedBy: MODEL_ID,
+          confidenceScore: c.confidenceScore.toFixed(3),
+          status: "pending_review", // P4 aggregator picks these up
+        })
+      }
       await db.insert(sourceClaims).values(rows)
     }
   }

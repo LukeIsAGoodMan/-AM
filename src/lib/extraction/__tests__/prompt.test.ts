@@ -6,6 +6,7 @@ import {
   PROMPT_VERSION,
   SYSTEM_PROMPT,
   buildUserMessage,
+  parseStructuredPayload,
 } from "@/lib/extraction/prompt"
 
 // Pure tests for the extraction prompt module. No LLM call. Pins:
@@ -35,27 +36,44 @@ describe("P2 — prompt module invariants", () => {
     expect(claimTypeProperty.enum).toEqual(ClaimType.options)
   })
 
+  it("JSON schema sets additionalProperties:false on every nested object (Anthropic structured-output requirement)", () => {
+    // The skill explicitly notes that structured outputs require
+    // `additionalProperties: false` — true or omitted both 400. This test
+    // pins that we comply at every nesting level.
+    expect(EXTRACTION_OUTPUT_JSON_SCHEMA.additionalProperties).toBe(false)
+    expect(
+      EXTRACTION_OUTPUT_JSON_SCHEMA.properties.claims.items.additionalProperties,
+    ).toBe(false)
+    // The per-claim structured payload is a string field (NOT a nested
+    // object) so we don't need additionalProperties there — and the
+    // model can still emit per-claim_type payload shapes inside the string.
+    expect(
+      EXTRACTION_OUTPUT_JSON_SCHEMA.properties.claims.items.properties
+        .structuredPayloadJson.type,
+    ).toBe("string")
+  })
+
   it("Zod schema accepts a well-formed extraction output", () => {
     const output = {
       claims: [
         {
           claimType: "earn_rate" as const,
-          structuredPayload: {
+          structuredPayloadJson: JSON.stringify({
             rewardFormulaType: "simple_percent",
             rate: 0.04,
             isOnline: true,
             categorySlug: "online_local",
-          },
+          }),
           extractedTextSnippet: "4% RewardCash on online local spend",
           confidenceScore: 0.9,
         },
         {
           claimType: "cap" as const,
-          structuredPayload: {
+          structuredPayloadJson: JSON.stringify({
             amountHkd: 100000,
             period: "year",
             basis: "spending",
-          },
+          }),
           extractedTextSnippet: "subject to an annual cap of HKD 100,000",
           confidenceScore: 0.85,
           note: "Cap applies to the online bonus; not the base earn",
@@ -65,6 +83,10 @@ describe("P2 — prompt module invariants", () => {
     }
     const parsed = ExtractionOutput.parse(output)
     expect(parsed.claims).toHaveLength(2)
+    // Payload round-trips
+    const payload = parseStructuredPayload(parsed.claims[0]!)
+    expect(payload.rate).toBe(0.04)
+    expect(payload.categorySlug).toBe("online_local")
   })
 
   it("Zod schema accepts an empty-claims output (chunk wasn't extractable)", () => {
@@ -82,7 +104,7 @@ describe("P2 — prompt module invariants", () => {
         claims: [
           {
             claimType: "lucky_draw_offer",
-            structuredPayload: {},
+            structuredPayloadJson: "{}",
             extractedTextSnippet: "win a trip to Tokyo",
             confidenceScore: 0.5,
           },
@@ -97,7 +119,7 @@ describe("P2 — prompt module invariants", () => {
         claims: [
           {
             claimType: "earn_rate",
-            structuredPayload: { rate: 0.04 },
+            structuredPayloadJson: JSON.stringify({ rate: 0.04 }),
             extractedTextSnippet: "4%",
             confidenceScore: 1.5,
           },
@@ -112,13 +134,27 @@ describe("P2 — prompt module invariants", () => {
         claims: [
           {
             claimType: "earn_rate",
-            structuredPayload: { rate: 0.04 },
+            structuredPayloadJson: JSON.stringify({ rate: 0.04 }),
             extractedTextSnippet: "",
             confidenceScore: 0.9,
           },
         ],
       }),
     ).toThrow()
+  })
+
+  it("parseStructuredPayload rejects non-object JSON (array, scalar, null)", () => {
+    const baseValid = {
+      claimType: "earn_rate" as const,
+      extractedTextSnippet: "4%",
+      confidenceScore: 0.9,
+    }
+    for (const badJson of ["[1,2,3]", "42", "null", '"a string"']) {
+      const claim = ExtractionOutput.parse({
+        claims: [{ ...baseValid, structuredPayloadJson: badJson }],
+      }).claims[0]!
+      expect(() => parseStructuredPayload(claim)).toThrow()
+    }
   })
 
   it("buildUserMessage produces deterministic output (caching invariant)", () => {

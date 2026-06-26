@@ -119,7 +119,7 @@ async function main() {
     console.log(`  type:        ${c.claimType}`)
     console.log(`  confidence:  ${c.confidenceScore.toFixed(2)}`)
     console.log(`  snippet:     "${c.extractedTextSnippet.slice(0, 120)}${c.extractedTextSnippet.length > 120 ? "…" : ""}"`)
-    console.log(`  payload:     ${JSON.stringify(c.structuredPayload)}`)
+    console.log(`  payload:     ${c.structuredPayloadJson}`)
     if (c.note) console.log(`  note:        ${c.note}`)
     console.log("")
   }

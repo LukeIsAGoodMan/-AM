@@ -33,20 +33,28 @@ export const ClaimType = z.enum([
 ])
 export type ClaimType = z.infer<typeof ClaimType>
 
-// Shape of a single claim the extractor emits. Mirrors source_claims.structured_payload
-// loose-ly — we keep it free-form (a Record) here because the inner shape
-// varies wildly per claim_type (rate% vs cap_hkd vs exclusion list). P3+
-// can tighten with discriminated unions per claim_type if needed.
+// Shape of a single claim the extractor emits. The structured payload's
+// inner shape varies per claim_type (rate% vs cap_hkd vs welcome_offer tiers),
+// and the Anthropic structured-outputs API requires `additionalProperties:false`
+// on every object — which rules out the obvious "free-form Record" encoding.
+// We work around that by having the model emit the payload as a JSON-encoded
+// string, then JSON.parse it on our side. The system prompt teaches the model
+// the per-claim_type payload shape; we trust it to produce valid JSON inside
+// the string. If it doesn't, the run fails loud with a parse error.
+//
+// P2.1+ can tighten this with a per-claim_type discriminated union (anyOf
+// is supported by the API) if the loose typing becomes a quality issue.
 export const ExtractedClaim = z.object({
   claimType: ClaimType,
-  // Structured payload — shape depends on claimType. Examples:
+  // JSON-encoded payload string. Examples of the parsed content:
   //   earn_rate     → { rewardFormulaType, rate?, points?, perHkd?, currencySlug?,
   //                     categorySlug?, isOnline?, isOverseas?, isForeignCurrency? }
   //   cap           → { amountHkd?, rewardAmount?, period, basis }
   //   exclusion     → { categorySlug?, appliesTo: string[] }
   //   welcome_offer → { tiers: [...] }
   //   annual_fee    → { amountHkd, waiverConditions?: string }
-  structuredPayload: z.record(z.unknown()),
+  // Use parseStructuredPayload() below to get the parsed object.
+  structuredPayloadJson: z.string().min(1),
   // The exact substring from the source that supports this claim.
   // Reviewer eyeballs this to spot hallucination.
   extractedTextSnippet: z.string().min(1),
@@ -58,6 +66,18 @@ export const ExtractedClaim = z.object({
   note: z.string().optional(),
 })
 export type ExtractedClaim = z.infer<typeof ExtractedClaim>
+
+// Helper: parse the JSON-string payload. Throws if invalid JSON — caller's
+// job to fail the extraction_run loud rather than persist garbage.
+export function parseStructuredPayload(claim: ExtractedClaim): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(claim.structuredPayloadJson)
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      `structured payload is not a JSON object: got ${typeof parsed}`,
+    )
+  }
+  return parsed as Record<string, unknown>
+}
 
 export const ExtractionOutput = z.object({
   claims: z.array(ExtractedClaim),
@@ -88,9 +108,13 @@ export const EXTRACTION_OUTPUT_JSON_SCHEMA = {
             type: "string",
             enum: ClaimType.options,
           },
-          structuredPayload: {
-            type: "object",
-            additionalProperties: true,
+          // String, not object — the API rejects additionalProperties:true
+          // and we can't enumerate every per-claim_type field without losing
+          // shape flexibility. See note on ExtractedClaim above.
+          structuredPayloadJson: {
+            type: "string",
+            description:
+              "JSON-encoded payload for this claim. The shape inside depends on claimType — see the system prompt for per-type schemas. Must be valid JSON that parses to an object.",
           },
           extractedTextSnippet: { type: "string" },
           confidenceScore: { type: "number" },
@@ -98,7 +122,7 @@ export const EXTRACTION_OUTPUT_JSON_SCHEMA = {
         },
         required: [
           "claimType",
-          "structuredPayload",
+          "structuredPayloadJson",
           "extractedTextSnippet",
           "confidenceScore",
         ],
@@ -144,7 +168,20 @@ Emit exactly one entry per claim. Use the most specific type that fits.
 
 # Output format
 
-Emit a JSON object matching the provided schema. The \`rationale\` field is optional but encouraged when claims is empty or when you noticed something ambiguous.`
+Emit a JSON object matching the provided schema.
+
+**Important**: each claim's \`structuredPayloadJson\` field is a **string** containing a JSON-encoded object — not a JSON object directly. For example, an earn_rate claim looks like:
+
+\`\`\`json
+{
+  "claimType": "earn_rate",
+  "structuredPayloadJson": "{\\"rewardFormulaType\\":\\"simple_percent\\",\\"rate\\":0.04,\\"isOnline\\":true,\\"categorySlug\\":\\"online_local\\"}",
+  "extractedTextSnippet": "4% RewardCash on online local spend",
+  "confidenceScore": 0.9
+}
+\`\`\`
+
+The inner JSON must parse to an object (not an array, not a scalar). The \`rationale\` field at the top level is optional but encouraged when claims is empty or when you noticed something ambiguous.`
 
 // User-turn template. The card context (issuer + card name) helps the model
 // disambiguate generic phrases ("the bonus" → which bonus). The category
