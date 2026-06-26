@@ -20,9 +20,11 @@
     "extract:sources": "tsx --env-file=.env.local scripts/extract-sources.ts",
     "diagnose": "tsx --env-file=.env.local scripts/diagnose.ts",
     "verify:ui": "tsx scripts/inspect-calc-page.ts",
+    "p2:dry-run": "tsx --env-file=.env.local scripts/p2-dry-run.ts",
     "db:seed": "pnpm import:data"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.106.0",
     "@tanstack/react-table": "^8.21.3",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",

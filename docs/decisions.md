@@ -126,6 +126,24 @@ PRD §18 seeded this list with 7 entries. Subsequent decisions are appended as m
 
 ---
 
+## D13 (P2) — Extraction prompt design: schema-guided + cached + Zod-validated
+
+**Decision**: P2's extraction prompt sits in `src/lib/extraction/prompt.ts`. It (a) constrains the model output via `output_config.format: {type: "json_schema", ...}` so the LLM can't free-form drift, (b) caches the system prompt + taxonomy via `cache_control: {type: "ephemeral"}` because that block is stable across every extraction call, and (c) Zod-parses the response anyway for belt-and-suspenders. Prompt is versioned (`PROMPT_VERSION = "p2-v1"`) and the version goes into `extraction_runs.prompt_version` and the `input_hash` so re-runs over the same chunk under a new prompt produce a distinct row.
+
+**Why**:
+- **Structured output, not prose**: LLMs reliably hallucinate JSON shapes when asked to "respond in JSON". The Messages API's `output_config.format` constrains generation against a JSON Schema at decode time, eliminating the "extra trailing comma" / "missing required field" failure modes that would otherwise require retry loops.
+- **Prompt caching is non-negotiable for cost**: the system prompt + claim-type taxonomy is ~1500 tokens. At Opus 4.7 rates ($5/1M input), uncached that's $0.0075 per call. With caching (1.25× write, 0.1× read), the second call onward costs ~$0.001 for that prefix. Across ~75 cards × ~5 chunks each × ~3 sources = ~1100 calls during Phase 2, caching is the difference between $8 and $1 just on the system prompt.
+- **Zod after structured output**: the API guarantees the shape matches the schema, but doesn't guarantee invariants like `extractedTextSnippet.length >= 1` (skill says JSON Schema can't carry `minLength`). Zod enforces those at parse time and surfaces a real error if the model emits a malformed claim, which we catch and persist as `extraction_runs.status='failed'` rather than silently dropping.
+- **Prompt version in `input_hash`**: P2's caller pre-computes `sha256(prompt_version + source_id + chunk_text)` so P3's runner can `WHERE NOT EXISTS` against `extraction_runs.input_hash` to skip already-extracted chunks. Bumping `PROMPT_VERSION` automatically invalidates the dedup — desired: a new prompt is *meant* to re-extract.
+
+**Knock-on**:
+- The system prompt mentions every `ClaimType` enum value by name — a vitest pin (`SYSTEM_PROMPT.includes(t)` for every t) forces them to stay in sync. Add a new claim_type, the test reminds you to update the prompt.
+- The user message is built deterministically (sorted-ish, no timestamps) so the same chunk under the same prompt version always serializes to the same bytes. The skill's caching invariant requires this — a `Date.now()` in the user message would silently make every call a cache miss.
+- Cost computed inline in `extractor.ts` is a snapshot of Anthropic's pricing (cached 2026). If they change, update `PRICING` constant; `extraction_runs.cost_usd_cents` rows written before the change are historical and shouldn't be back-corrected.
+- The extractor uses **non-streaming** at `max_tokens: 8000`. The skill flags streaming as a default for high `max_tokens`, but extraction outputs are small (one chunk → at most a handful of claims) so the simpler non-streaming path is fine. P3's runner can switch to streaming if a chunk genuinely needs more headroom.
+
+---
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:
