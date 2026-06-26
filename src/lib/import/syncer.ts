@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs"
+import { join, resolve } from "node:path"
 import { eq, inArray, sql } from "drizzle-orm"
 import type { DB } from "@/db/client"
 import {
@@ -235,6 +237,7 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
       annualFeeHkd: data.card.annualFeeHkd?.toString(),
       status: data.card.status,
       officialUrl: data.card.officialUrl,
+      imagePath: detectCardImagePath(data.card.slug),
       notes: data.card.notes,
       qualitativeFeatures: data.card.qualitativeFeatures ?? {},
     }
@@ -700,3 +703,21 @@ async function upsertBySlug(
 
 // Re-export to support a `pnpm db:reset && pnpm import:data` style flow in tests.
 export { sql }
+
+// Card-image convention helper. Files at public/card-images/<slug>.<ext>
+// (png|jpg|jpeg|webp) get auto-detected on every import; no YAML edit
+// needed. Returns the public web path (which Next.js serves directly)
+// or null when no file is on disk.
+const CARD_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp"] as const
+const CARD_IMAGE_DIR = resolve(process.cwd(), "public", "card-images")
+
+function detectCardImagePath(slug: string): string | null {
+  for (const ext of CARD_IMAGE_EXTENSIONS) {
+    const filePath = join(CARD_IMAGE_DIR, `${slug}.${ext}`)
+    if (existsSync(filePath)) {
+      // Web path served by Next.js — matches `<img src=... />` consumption.
+      return `/card-images/${slug}.${ext}`
+    }
+  }
+  return null
+}

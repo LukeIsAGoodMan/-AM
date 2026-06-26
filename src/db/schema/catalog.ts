@@ -173,6 +173,11 @@ export const cards = pgTable("cards", {
   annualFeeHkd: numeric("annual_fee_hkd", { precision: 12, scale: 2 }),
   status: text("status").default("draft").notNull(),
   officialUrl: text("official_url"),
+  // Auto-populated by the syncer when public/card-images/<slug>.<ext> exists
+  // on disk. Convention path so the admin UI can render <img src=... /> with
+  // no per-card metadata in YAML. Override via external CDN would need a
+  // separate column; not built today.
+  imagePath: text("image_path"),
   notes: text("notes"),
   // M9: jsonb features the calculator can't model but Q&A / comparison needs.
   // Shape examples:

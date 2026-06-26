@@ -20,6 +20,7 @@
     "extract:sources": "tsx --env-file=.env.local scripts/extract-sources.ts",
     "diagnose": "tsx --env-file=.env.local scripts/diagnose.ts",
     "verify:ui": "tsx scripts/inspect-calc-page.ts",
+    "fetch:card-images": "tsx --env-file=.env.local scripts/fetch-card-images.ts",
     "p2:dry-run": "tsx --env-file=.env.local scripts/p2-dry-run.ts",
     "db:seed": "pnpm import:data"
   },
