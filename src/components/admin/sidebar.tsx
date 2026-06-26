@@ -24,7 +24,7 @@ const NAV = [
   { href: "/campaigns", label: "Campaigns", icon: Megaphone, ready: false },
   { href: "/merchants", label: "Merchants", icon: Store, ready: false },
   { href: "/calculator-test", label: "Calculator", icon: Calculator, ready: true },
-  { href: "/projection-test", label: "Projection", icon: LineChart, ready: false },
+  { href: "/projection-test", label: "Projection", icon: LineChart, ready: true },
 ]
 
 export function Sidebar() {

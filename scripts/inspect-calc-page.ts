@@ -6,6 +6,7 @@
 //   3. Klook ranking order
 //   4. M15 edit-rule happy path (notes change on approved rule succeeds)
 //   5. M15 edit-rule refusal gate (economic change on approved rule refused)
+//   6. M16 /projection-test renders + welcome offer toggle changes total
 
 import { chromium } from "playwright"
 
@@ -82,6 +83,29 @@ async function main() {
   await page.waitForSelector(".border-rose-200", { timeout: 4000 })
   const errorMsg = await page.locator(".border-rose-200").textContent()
   console.log(`refusal banner: ${errorMsg?.trim().slice(0, 140)}`)
+
+  console.log("\n=== Test 6: M16 projection page renders + welcome contributes ===")
+  await page.goto("http://localhost:3000/projection-test", {
+    waitUntil: "networkidle",
+  })
+  await page.selectOption("select", "demo-plan-mode")
+  await page.waitForTimeout(150)
+  // HSBC Red's projection row: the inline "+ welcome HKD X.XX (Y%)" phrase
+  // only appears when welcomeOfferContributionHkd > 0. The standalone
+  // "1 welcome offer" badge is always shown for cards with priced offers,
+  // so we don't grep for plain "welcome".
+  const hsbcRedRow = page
+    .locator("div.rounded.border:has(a:text-is('HSBC Red Credit Card'))")
+    .first()
+  const beforeText = await hsbcRedRow.textContent()
+  const beforeContrib = beforeText?.includes("+ welcome HKD") ?? false
+  console.log(`HSBC Red shows '+ welcome HKD ...': ${beforeContrib}`)
+
+  await page.click("label:has-text('Include welcome offer') input[type=checkbox]")
+  await page.waitForTimeout(150)
+  const afterText = await hsbcRedRow.textContent()
+  const afterContrib = afterText?.includes("+ welcome HKD") ?? false
+  console.log(`after toggling off, still shows '+ welcome HKD ...': ${afterContrib}`)
 
   await browser.close()
 }

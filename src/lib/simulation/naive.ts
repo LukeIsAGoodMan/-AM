@@ -33,6 +33,13 @@ import type {
 
 export class NaiveSimulationEngine implements SimulationEngine {
   async project(input: ProjectionInputs): Promise<Projection> {
+    return this.projectSync(input)
+  }
+
+  // Sync entry point. The interface stays async (Phase 2 may add IO), but
+  // this naive impl has none. Useful for in-render computation in the
+  // /projection-test page where useMemo can't await.
+  projectSync(input: ProjectionInputs): Projection {
     const startDate = parseIso(input.startDate)
     // Per-rule period token that was current the last time we advanced
     // capUsage. When the next month's token differs, reset the key.
