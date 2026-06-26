@@ -144,6 +144,28 @@ PRD §18 seeded this list with 7 entries. Subsequent decisions are appended as m
 
 ---
 
+## D14 (P3) — Extraction runner: dedup by input_hash, concurrent batches, fail-isolated
+
+**Decision**: P3's batch runner orchestrates many P2 extractor calls under three constraints:
+1. **Dedup** via `(PROMPT_VERSION, source_id, chunk_text)` SHA-256 hash. Before processing, query `extraction_runs WHERE status='succeeded' AND input_hash IN (...)` and skip matches. `--force` bypasses for prompt-iteration runs.
+2. **Concurrency cap** (default 3). Process in `Promise.allSettled` batches sized to the cap; wait for the batch to finish before starting the next.
+3. **Failure isolation**. A single chunk's API error or schema-validation failure produces an `extraction_runs` row with `status='failed'`, surfaces in the per-chunk callback, and does NOT abort sibling chunks. Re-runs naturally retry the failures because dedup only skips `succeeded`.
+
+CLI default behavior is "no scope = no work" — must pass `--card-slug` or `--status`. Avoids the "I meant to test one card and just spent $50" footgun.
+
+**Why**:
+- **Hash-based dedup over a "processed" flag**: a flag couples the source-of-truth to the extraction_runs table (which would need a column added, plus a backfill). Hashing the inputs the model actually saw lets the same dedup logic work across chunks that may have been re-chunked, sources that may have been re-extracted, or prompts that may have changed (because PROMPT_VERSION is in the hash — a new prompt invalidates the dedup, *desired*: a new prompt is meant to re-extract).
+- **Skip on succeeded, not on any-status**: a stuck `pending` run shouldn't permanently block a retry. A `failed` run is the recovery target. Only `succeeded` means "this was extracted correctly, don't re-pay for it."
+- **`Promise.allSettled` over `Promise.all`**: with `.all`, one rejection aborts the whole batch and we lose the work of N-1 in-flight calls. With `.allSettled`, every chunk gets recorded one way or the other. Bank T&Cs are messy; a single chunk that confuses the model shouldn't take down a 50-card overnight run.
+- **Cap concurrency at 3, not unlimited**: prompt caching (D13) requires the first cache-write to *finish streaming* before sibling requests can read the cache. Burst all 50 chunks in parallel and every single one pays the cache-write premium (1.25× input) instead of the read price (0.1×). 3-at-a-time means the first request seeds the cache before chunks 2-50 fan out and read from it. The 13× cost difference on cached input is the difference between "$5 to extract Phase 2" and "$60".
+
+**Knock-on**:
+- The runner exposes an `extractFn` parameter for tests to inject a mock (the production caller passes the real `extractClaimsFromChunk`). Avoids needing to mock Anthropic's SDK; one less moving part in the test suite.
+- The CLI's "must specify scope" default is documented in `--help`. If we ever build a "background extractor cron" it'll need a `--all` flag that the test/dev CLI deliberately omits.
+- `loadSeenInputHashes` does a single `IN + AND status='succeeded'` query — no per-chunk round trips. For Phase 2's expected ~1000-chunk runs, that's one query of ~1000 hashes, well within Postgres's IN-clause comfort zone.
+
+---
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:

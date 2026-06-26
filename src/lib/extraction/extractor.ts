@@ -92,16 +92,9 @@ export async function extractClaimsFromChunk(
     knownCategorySlugs,
   })
 
-  // input_hash dedups identical (chunk, prompt_version) re-runs at the
-  // application level — DB doesn't enforce, P3 runner can use this to
-  // skip already-extracted chunks.
-  const inputHash = createHash("sha256")
-    .update(PROMPT_VERSION)
-    .update("\n")
-    .update(input.sourceId)
-    .update("\n")
-    .update(input.chunkText)
-    .digest("hex")
+  // input_hash dedups identical (prompt_version, source, chunk) re-runs at
+  // the application level — DB doesn't enforce.
+  const inputHash = computeInputHash(input.sourceId, input.chunkText)
 
   // Pre-insert the run row so we have an id even if the API call fails.
   let runId: string | null = null
@@ -275,6 +268,19 @@ export async function extractClaimsFromChunk(
       cacheReadInputTokens: response.usage.cache_read_input_tokens ?? 0,
     },
   }
+}
+
+// Same hash the extractor records on extraction_runs.input_hash. Exported
+// so the P3 runner can pre-query "which chunks have I already extracted?"
+// without duplicating the formula.
+export function computeInputHash(sourceId: string, chunkText: string): string {
+  return createHash("sha256")
+    .update(PROMPT_VERSION)
+    .update("\n")
+    .update(sourceId)
+    .update("\n")
+    .update(chunkText)
+    .digest("hex")
 }
 
 async function loadCategorySlugs(): Promise<string[]> {

@@ -22,6 +22,7 @@
     "verify:ui": "tsx scripts/inspect-calc-page.ts",
     "fetch:card-images": "tsx --env-file=.env.local scripts/fetch-card-images.ts",
     "p2:dry-run": "tsx --env-file=.env.local scripts/p2-dry-run.ts",
+    "p3:run": "tsx --env-file=.env.local scripts/p3-run-extraction.ts",
     "db:seed": "pnpm import:data"
   },
   "dependencies": {
