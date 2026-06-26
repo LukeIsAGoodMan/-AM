@@ -7,6 +7,7 @@
 //   4. M15 edit-rule happy path (notes change on approved rule succeeds)
 //   5. M15 edit-rule refusal gate (economic change on approved rule refused)
 //   6. M16 /projection-test renders + welcome offer toggle changes total
+//   7. M17 /dashboard renders counts + 0.0% custom_note schema-health metric
 
 import { chromium } from "playwright"
 
@@ -106,6 +107,22 @@ async function main() {
   const afterText = await hsbcRedRow.textContent()
   const afterContrib = afterText?.includes("+ welcome HKD") ?? false
   console.log(`after toggling off, still shows '+ welcome HKD ...': ${afterContrib}`)
+
+  console.log("\n=== Test 7: M17 dashboard renders + custom_note ratio ===")
+  await page.goto("http://localhost:3000/dashboard", { waitUntil: "networkidle" })
+  // The schema-health Card has an h3 "Schema health …"; the ratio headline
+  // is a .text-3xl span inside the same Card. Walk up to the Card root then
+  // back down to the span.
+  const ratioText = await page
+    .locator(".rounded-lg:has(h3:has-text('Schema health')) span.text-3xl")
+    .first()
+    .textContent()
+  console.log(`custom_note ratio headline: ${ratioText?.trim()}`)
+  const cardsCount = await page
+    .locator(".rounded-lg:has(h3:has-text('Cards')) div.text-2xl")
+    .first()
+    .textContent()
+  console.log(`cards count headline: ${cardsCount?.trim()}`)
 
   await browser.close()
 }
