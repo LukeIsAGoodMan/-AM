@@ -11,6 +11,8 @@
 //   8. P5 /review queue renders + open-conflict count is visible
 //   9. P6 /review/[taskId] detail renders + approve+reopen roundtrip works
 //  10. P7 /rules surfaces xchk__-prefixed materialized rules
+//  11. P10 /dashboard renders the Phase 2 extraction telemetry card
+//  12. P10 /rules/[xchk__-slug] renders the cross-check provenance card
 
 import { chromium } from "playwright"
 
@@ -218,6 +220,64 @@ async function main() {
     .first()
     .textContent()
   console.log(`/rules header: ${rulesSubtitle?.trim().replace(/\s+/g, " ")}`)
+
+  console.log(
+    "\n=== Test 11: P10 /dashboard Phase 2 extraction telemetry card ===",
+  )
+  await page.goto("http://localhost:3000/dashboard", { waitUntil: "networkidle" })
+  // The new Card has CardTitle "Phase 2 — extraction + cross-check". Walk
+  // from there to its CardContent and read out the LLM cost + backlog Stat.
+  const phase2Card = page
+    .locator(".rounded-lg:has(h3:has-text('Phase 2 — extraction'))")
+    .first()
+  const costStat = await phase2Card
+    .locator("div:has(> div:text-is('LLM cost to date')) > div.text-xl")
+    .first()
+    .textContent()
+  console.log(`LLM cost-to-date Stat: ${costStat?.trim()}`)
+  const backlogStat = await phase2Card
+    .locator("div:has(> div:text-is('Review backlog')) > div.text-xl")
+    .first()
+    .textContent()
+  console.log(`Review backlog Stat: ${backlogStat?.trim()}`)
+  // Top-cards bar list exists (means materialized rules > 0).
+  const topCardsBars = await phase2Card
+    .locator("h4:has-text('Top cards by materialized rules') ~ ul li")
+    .count()
+  console.log(`top materialized-rules bars rendered: ${topCardsBars}`)
+
+  console.log(
+    "\n=== Test 12: P10 /rules/[xchk__-slug] cross-check provenance card ===",
+  )
+  // Find any xchk__-prefixed rule slug via the /rules search and click it.
+  await page.goto("http://localhost:3000/rules", { waitUntil: "networkidle" })
+  await page
+    .locator("input[placeholder^='Search rule']")
+    .fill("xchk__earn_rate")
+  await page.waitForTimeout(150)
+  const firstXchkLink = await page
+    .locator("table tbody tr:has(div.font-mono:has-text('xchk__earn_rate')) a")
+    .first()
+    .getAttribute("href")
+  if (!firstXchkLink) throw new Error("No xchk__ earn_rate rule visible on /rules")
+  await page.goto(`http://localhost:3000${firstXchkLink}`, {
+    waitUntil: "networkidle",
+  })
+  // The provenance Card renders below the existing 6 cards. Its title is
+  // "Cross-check provenance ...".
+  const provCard = page
+    .locator(".rounded-lg:has(h3:has-text('Cross-check provenance'))")
+    .first()
+  const provSupportingHeading = await provCard
+    .locator("h4:has-text('Supporting sources')")
+    .first()
+    .textContent()
+  console.log(`provenance supporting heading: ${provSupportingHeading?.trim()}`)
+  // At least one supporting-source card (emerald-tinted) exists.
+  const supportingClaims = await provCard
+    .locator("div.bg-emerald-50\\/30 blockquote")
+    .count()
+  console.log(`provenance claim blockquotes rendered: ${supportingClaims}`)
 
   await browser.close()
 }

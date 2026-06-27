@@ -403,8 +403,11 @@ P9  ✅ Bulk run P8 across 10 more cards                 (2d)
     104 P7-materialized reward_rules. PRD §22.10 #2 + #3
     + #4 all green. #1 still gated on draft→approved card
     promotion which is downstream of P9's per-card pipeline.
-P10 Polish: extraction cost dashboard, claim provenance (1d)
-    on rule detail page, archive superseded claims
+P10 ✅ Polish: extraction cost dashboard, claim         (1d)
+    provenance on rule detail page.
+    (Archive-superseded-claims sub-bullet deferred —
+    no user-facing demand; can add a small CLI later
+    if review_tasks queue cleanup needs it.)
 ```
 
 Total: ~12–13 sit-downs ≈ 3 working weeks for one person.

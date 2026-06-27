@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm"
+import { eq, sql, inArray, asc } from "drizzle-orm"
 import { db } from "@/db/client"
 import {
   campaigns,
@@ -9,6 +9,11 @@ import {
   rewardRules,
   sourceDocuments,
 } from "@/db/schema/catalog"
+import {
+  crossCheckGroups,
+  rewardRuleSources,
+  sourceClaims,
+} from "@/db/schema/extraction"
 
 export type RuleListRow = {
   id: string
@@ -98,6 +103,40 @@ export async function listRules(): Promise<RuleListRow[]> {
   return rows
 }
 
+export type RuleProvenanceClaim = {
+  claimId: string
+  extractedTextSnippet: string
+  structuredPayload: unknown
+  confidence: string
+  extractedBy: string
+  reviewerNote: string | null
+  source: {
+    id: string
+    slug: string
+    title: string
+    sourcePriority: number
+    url: string | null
+  }
+}
+
+export type RuleProvenance = {
+  // The cross_check_group whose materialization produced this rule.
+  // null when reward_rule_sources rows exist but none of them ties
+  // back to a group (e.g., manual provenance entry).
+  group: {
+    id: string
+    claimType: string
+    keyDimension: string
+    status: string
+    aggregateConfidence: string
+    canonicalPayload: unknown
+    contradictingClaimIds: string[]
+  } | null
+  // One entry per supporting source (deduped on source_id by the
+  // materializer's m:n join row layout).
+  supportingClaims: RuleProvenanceClaim[]
+}
+
 export type RuleDetail = {
   rule: typeof rewardRules.$inferSelect
   card: typeof cards.$inferSelect
@@ -108,6 +147,9 @@ export type RuleDetail = {
   campaign: typeof campaigns.$inferSelect | null
   supersedesRule: typeof rewardRules.$inferSelect | null
   supersededByRules: (typeof rewardRules.$inferSelect)[]
+  // P10 — populated when reward_rule_sources rows exist for this rule
+  // (the P7 materializer writes them). null for hand-curated YAML rules.
+  provenance: RuleProvenance | null
 }
 
 export async function getRuleDetail(slug: string): Promise<RuleDetail | null> {
@@ -125,7 +167,7 @@ export async function getRuleDetail(slug: string): Promise<RuleDetail | null> {
   const row = found[0]
   if (!row) return null
 
-  const [supersedesRule, supersededByRules] = await Promise.all([
+  const [supersedesRule, supersededByRules, provenance] = await Promise.all([
     row.reward_rules.supersedesRuleId
       ? db
           .select()
@@ -137,6 +179,7 @@ export async function getRuleDetail(slug: string): Promise<RuleDetail | null> {
       .select()
       .from(rewardRules)
       .where(eq(rewardRules.supersedesRuleId, row.reward_rules.id)),
+    loadProvenance(row.reward_rules.id),
   ])
 
   return {
@@ -149,5 +192,82 @@ export async function getRuleDetail(slug: string): Promise<RuleDetail | null> {
     campaign: row.campaigns,
     supersedesRule,
     supersededByRules,
+    provenance,
+  }
+}
+
+// Load the cross-check provenance for a rule: the group it was
+// materialized from + every supporting claim (with source meta). Returns
+// null for hand-curated YAML rules (no reward_rule_sources rows). One
+// round trip for the join rows + one for the claims + one for the
+// group: three queries even for the worst case of a 10-source rule.
+async function loadProvenance(ruleId: string): Promise<RuleProvenance | null> {
+  const joinRows = await db
+    .select({ supportingClaimId: rewardRuleSources.supportingClaimId })
+    .from(rewardRuleSources)
+    .where(eq(rewardRuleSources.ruleId, ruleId))
+  if (joinRows.length === 0) return null
+
+  // supportingClaimId is nullable on the schema, but P7's materializer
+  // always sets it. Filter for safety so a future manual provenance row
+  // without a claim doesn't crash the page.
+  const claimIds = joinRows
+    .map((j) => j.supportingClaimId)
+    .filter((id): id is string => id !== null)
+  if (claimIds.length === 0) {
+    return { group: null, supportingClaims: [] }
+  }
+
+  const claimRows = await db
+    .select({
+      claim: sourceClaims,
+      source: sourceDocuments,
+    })
+    .from(sourceClaims)
+    .innerJoin(sourceDocuments, eq(sourceClaims.sourceId, sourceDocuments.id))
+    .where(inArray(sourceClaims.id, claimIds))
+    .orderBy(asc(sourceDocuments.sourcePriority), asc(sourceClaims.createdAt))
+
+  // All claims in a materialization come from the same cross_check_group
+  // (P7 materializes one group at a time). Read the group from the first
+  // claim's pointer, then trust the rest match.
+  const firstGroupId = claimRows[0]?.claim.crossCheckGroupId ?? null
+  const groupRow = firstGroupId
+    ? (
+        await db
+          .select()
+          .from(crossCheckGroups)
+          .where(eq(crossCheckGroups.id, firstGroupId))
+          .limit(1)
+      )[0]
+    : null
+
+  return {
+    group: groupRow
+      ? {
+          id: groupRow.id,
+          claimType: groupRow.claimType,
+          keyDimension: groupRow.keyDimension,
+          status: groupRow.status,
+          aggregateConfidence: groupRow.aggregateConfidence,
+          canonicalPayload: groupRow.canonicalPayload,
+          contradictingClaimIds: groupRow.contradictingClaimIds,
+        }
+      : null,
+    supportingClaims: claimRows.map((r) => ({
+      claimId: r.claim.id,
+      extractedTextSnippet: r.claim.extractedTextSnippet,
+      structuredPayload: r.claim.structuredPayload,
+      confidence: r.claim.confidenceScore,
+      extractedBy: r.claim.extractedBy,
+      reviewerNote: r.claim.reviewerNote,
+      source: {
+        id: r.source.id,
+        slug: r.source.slug,
+        title: r.source.title,
+        sourcePriority: r.source.sourcePriority,
+        url: r.source.url,
+      },
+    })),
   }
 }

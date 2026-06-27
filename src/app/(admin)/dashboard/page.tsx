@@ -124,6 +124,78 @@ export default async function DashboardPage() {
           </Card>
         </div>
 
+        {/* Phase 2 — extraction cost + review backlog (PRD §22.10 #5) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Phase 2 — extraction + cross-check
+              <span className="ml-2 text-xs font-normal text-neutral-500">
+                (PRD §22.10 #5 telemetry)
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 lg:grid-cols-4">
+              <Stat
+                label="LLM cost to date"
+                value={`$${(data.extraction.totalCostUsdCents / 100).toFixed(2)}`}
+                hint={`${data.extraction.succeededRuns} succeeded · ${data.extraction.failedRuns} failed runs`}
+              />
+              <Stat
+                label="Claims emitted"
+                value={data.extraction.totalClaimsEmitted.toLocaleString()}
+                hint={`avg ${data.extraction.avgLatencyMs}ms / call`}
+              />
+              <Stat
+                label="Cross-check groups"
+                value={data.crossCheck.totalGroups.toLocaleString()}
+                hint={`${data.crossCheck.materializedRules} materialized to rules`}
+              />
+              <Stat
+                label="Review backlog"
+                value={data.reviewQueue.openTasks.toLocaleString()}
+                hint={`${data.reviewQueue.resolvedTasks} resolved · ${data.reviewQueue.dismissedTasks} dismissed`}
+                href="/review"
+              />
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              <VerdictPill
+                tone="red"
+                label="Conflicts (open)"
+                count={data.reviewQueue.openConflicts}
+                groupCount={data.crossCheck.conflictGroups}
+              />
+              <VerdictPill
+                tone="green"
+                label="Agreed-to-confirm (open)"
+                count={data.reviewQueue.openAgreedToConfirm}
+                groupCount={data.crossCheck.agreedGroups}
+              />
+              <VerdictPill
+                tone="yellow"
+                label="Single-source (open)"
+                count={data.reviewQueue.openSingleSource}
+                groupCount={data.crossCheck.singleSourceGroups}
+              />
+            </div>
+
+            {data.crossCheck.topCardsByMaterializedRules.length > 0 ? (
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  Top cards by materialized rules (xchk__)
+                </h4>
+                <BarList
+                  rows={data.crossCheck.topCardsByMaterializedRules.map((r) => ({
+                    label: r.cardSlug,
+                    count: r.ruleCount,
+                  }))}
+                />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Recently updated rules</CardTitle>
@@ -197,6 +269,67 @@ function CountCard({
     <Link href={href} className="block">
       {body}
     </Link>
+  )
+}
+
+function Stat({
+  label,
+  value,
+  hint,
+  href,
+}: {
+  label: string
+  value: string
+  hint?: string
+  href?: string
+}) {
+  const body = (
+    <div className="rounded border border-neutral-200 bg-white p-3">
+      <div className="text-xs uppercase tracking-wide text-neutral-500">
+        {label}
+      </div>
+      <div className="mt-0.5 text-xl font-semibold tabular-nums text-neutral-900">
+        {value}
+      </div>
+      {hint ? (
+        <div className="mt-0.5 text-[11px] text-neutral-500">{hint}</div>
+      ) : null}
+    </div>
+  )
+  return href ? (
+    <Link href={href} className="block hover:bg-neutral-50">
+      {body}
+    </Link>
+  ) : (
+    body
+  )
+}
+
+function VerdictPill({
+  tone,
+  label,
+  count,
+  groupCount,
+}: {
+  tone: "red" | "green" | "yellow"
+  label: string
+  count: number
+  groupCount: number
+}) {
+  const toneClass =
+    tone === "red"
+      ? "border-rose-200 bg-rose-50 text-rose-900"
+      : tone === "green"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+        : "border-amber-200 bg-amber-50 text-amber-900"
+  return (
+    <div className={cn("rounded border p-3", toneClass)}>
+      <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
+      <div className="mt-0.5 flex items-baseline gap-2">
+        <span className="text-xl font-semibold tabular-nums">{count}</span>
+        <span className="text-xs opacity-70">/ {groupCount} groups</span>
+      </div>
+    </div>
   )
 }
 

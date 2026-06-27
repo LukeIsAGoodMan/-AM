@@ -27,6 +27,7 @@ export default async function RuleDetailPage({
     campaign,
     supersedesRule,
     supersededByRules,
+    provenance,
   } = detail
 
   return (
@@ -235,6 +236,92 @@ export default async function RuleDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {provenance ? (
+        <div className="px-6 pt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Cross-check provenance
+                <span className="ml-2 text-xs font-normal text-neutral-500">
+                  (materialized from a P4 cross_check_group)
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {provenance.group ? (
+                <div className="flex flex-wrap items-baseline gap-2 text-sm">
+                  <StatusBadge status={provenance.group.status} />
+                  <Badge tone="gray">{provenance.group.claimType}</Badge>
+                  <span className="font-mono text-xs text-neutral-700">
+                    {provenance.group.keyDimension}
+                  </span>
+                  <span className="text-xs text-neutral-500">
+                    · aggregate confidence{" "}
+                    {Number(provenance.group.aggregateConfidence).toFixed(3)}
+                  </span>
+                  {provenance.group.contradictingClaimIds.length > 0 ? (
+                    <span className="text-xs text-rose-700">
+                      · {provenance.group.contradictingClaimIds.length}{" "}
+                      contradicting claim
+                      {provenance.group.contradictingClaimIds.length === 1
+                        ? ""
+                        : "s"}{" "}
+                      excluded from canonical
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  Supporting sources ({provenance.supportingClaims.length})
+                </h4>
+                <div className="space-y-3">
+                  {provenance.supportingClaims.map((c) => (
+                    <div
+                      key={c.claimId}
+                      className="rounded border border-emerald-200 bg-emerald-50/30 p-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <Badge tone="green">P{c.source.sourcePriority}</Badge>
+                        {c.source.url ? (
+                          <a
+                            href={c.source.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-neutral-800 hover:underline"
+                          >
+                            {c.source.title}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-neutral-800">
+                            {c.source.title}
+                          </span>
+                        )}
+                        <span className="text-neutral-400">·</span>
+                        <Link
+                          href={`/sources/${c.source.slug}`}
+                          className="font-mono text-[11px] text-neutral-500 hover:underline"
+                        >
+                          {c.source.slug}
+                        </Link>
+                        <span className="ml-auto tabular-nums text-neutral-500">
+                          conf {Number(c.confidence).toFixed(2)} ·{" "}
+                          {c.extractedBy}
+                        </span>
+                      </div>
+                      <blockquote className="mt-2 rounded border border-neutral-200 bg-white p-2 text-xs italic text-neutral-700">
+                        “{c.extractedTextSnippet}”
+                      </blockquote>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
     </div>
   )
 }

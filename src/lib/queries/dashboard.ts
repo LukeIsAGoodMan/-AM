@@ -1,4 +1,4 @@
-import { sql, desc } from "drizzle-orm"
+import { sql, desc, eq } from "drizzle-orm"
 import { db } from "@/db/client"
 import {
   campaigns,
@@ -10,6 +10,12 @@ import {
   sourceDocuments,
   welcomeOffers,
 } from "@/db/schema/catalog"
+import {
+  crossCheckGroups,
+  extractionRuns,
+  reviewTasks,
+  sourceClaims,
+} from "@/db/schema/extraction"
 
 // Counts + ratios for /dashboard. The custom_note ratio is the load-bearing
 // schema-health metric (PRD §5 principle 4 / roadmap M9 checkpoint): a
@@ -47,6 +53,35 @@ export type DashboardData = {
     status: string
     updatedAt: Date
   }[]
+  // Phase 2 extraction telemetry (PRD §22.10 #5 — operator should see
+  // what extraction costs + how big the review backlog is at a glance).
+  extraction: {
+    totalRuns: number
+    succeededRuns: number
+    failedRuns: number
+    totalClaimsEmitted: number
+    totalCostUsdCents: number
+    avgLatencyMs: number
+  }
+  reviewQueue: {
+    openTasks: number
+    openConflicts: number
+    openSingleSource: number
+    openAgreedToConfirm: number
+    resolvedTasks: number
+    dismissedTasks: number
+  }
+  crossCheck: {
+    totalGroups: number
+    agreedGroups: number
+    singleSourceGroups: number
+    conflictGroups: number
+    materializedRules: number
+    // (slug, rule_count) for the top-5 cards by P7-materialized rule count.
+    // Surfaces "which cards has the cross-check pipe produced the most
+    // for so far" — directional read on Phase 2 coverage.
+    topCardsByMaterializedRules: { cardSlug: string; ruleCount: number }[]
+  }
 }
 
 export async function loadDashboardData(): Promise<DashboardData> {
@@ -64,6 +99,10 @@ export async function loadDashboardData(): Promise<DashboardData> {
     rulesByStatus,
     cardsByIssuer,
     recentlyUpdatedRules,
+    extractionAgg,
+    reviewAgg,
+    crossCheckAgg,
+    topMaterialized,
   ] = await Promise.all([
     db.select({ n: sql<number>`COUNT(*)::int` }).from(issuers),
     db
@@ -143,6 +182,55 @@ export async function loadDashboardData(): Promise<DashboardData> {
       .innerJoin(cards, sql`${rewardRules.cardId} = ${cards.id}`)
       .orderBy(desc(rewardRules.updatedAt))
       .limit(10),
+    // Phase 2 — extraction_runs aggregates. COUNT FILTER + SUM in one
+    // pass instead of three separate queries.
+    db
+      .select({
+        totalRuns: sql<number>`COUNT(*)::int`,
+        succeededRuns: sql<number>`COUNT(*) FILTER (WHERE ${extractionRuns.status}='succeeded')::int`,
+        failedRuns: sql<number>`COUNT(*) FILTER (WHERE ${extractionRuns.status}='failed')::int`,
+        totalClaimsEmitted: sql<number>`COALESCE(SUM(${extractionRuns.claimsEmitted}), 0)::int`,
+        totalCostUsdCents: sql<number>`COALESCE(SUM(${extractionRuns.costUsdCents}), 0)::int`,
+        avgLatencyMs: sql<number>`COALESCE(AVG(${extractionRuns.latencyMs}), 0)::int`,
+      })
+      .from(extractionRuns),
+    // review_tasks bucketing by status × group verdict. Mirrors the
+    // /review queue's header subtitle so the dashboard tells the same
+    // story without forcing a tab-switch.
+    db
+      .select({
+        openTasks: sql<number>`COUNT(*) FILTER (WHERE ${reviewTasks.status}='open')::int`,
+        openConflicts: sql<number>`COUNT(*) FILTER (WHERE ${reviewTasks.status}='open' AND ${reviewTasks.taskType}='conflict_resolution')::int`,
+        openSingleSource: sql<number>`COUNT(*) FILTER (WHERE ${reviewTasks.status}='open' AND ${reviewTasks.taskType}='claim_review')::int`,
+        openAgreedToConfirm: sql<number>`COUNT(*) FILTER (WHERE ${reviewTasks.status}='open' AND ${reviewTasks.taskType}='cross_check_confirmation')::int`,
+        resolvedTasks: sql<number>`COUNT(*) FILTER (WHERE ${reviewTasks.status}='resolved')::int`,
+        dismissedTasks: sql<number>`COUNT(*) FILTER (WHERE ${reviewTasks.status}='dismissed')::int`,
+      })
+      .from(reviewTasks),
+    // cross_check_groups verdict distribution + materialized-count.
+    db
+      .select({
+        totalGroups: sql<number>`COUNT(*)::int`,
+        agreedGroups: sql<number>`COUNT(*) FILTER (WHERE ${crossCheckGroups.status}='agreed')::int`,
+        singleSourceGroups: sql<number>`COUNT(*) FILTER (WHERE ${crossCheckGroups.status}='single_source')::int`,
+        conflictGroups: sql<number>`COUNT(*) FILTER (WHERE ${crossCheckGroups.status}='conflict')::int`,
+        materializedRules: sql<number>`COUNT(*) FILTER (WHERE ${crossCheckGroups.approvedRuleId} IS NOT NULL)::int`,
+      })
+      .from(crossCheckGroups),
+    // Per-card materialized-rule count, top 5 by descending count. Joins
+    // to cards for the slug. Uses the xchk__ slug prefix as the
+    // materialization marker (matches D16's slug convention).
+    db
+      .select({
+        cardSlug: cards.slug,
+        ruleCount: sql<number>`COUNT(*)::int`,
+      })
+      .from(rewardRules)
+      .innerJoin(cards, eq(rewardRules.cardId, cards.id))
+      .where(sql`${rewardRules.slug} LIKE 'xchk__%'`)
+      .groupBy(cards.slug)
+      .orderBy(desc(sql<number>`COUNT(*)`))
+      .limit(5),
   ])
 
   const c = cardCounts[0]!
@@ -176,5 +264,15 @@ export async function loadDashboardData(): Promise<DashboardData> {
     rulesByStatus,
     cardsByIssuer,
     recentlyUpdatedRules,
+    extraction: extractionAgg[0]!,
+    reviewQueue: reviewAgg[0]!,
+    crossCheck: {
+      ...crossCheckAgg[0]!,
+      topCardsByMaterializedRules: topMaterialized,
+    },
   }
 }
+
+// Reference unused imports introduced for Phase 2 telemetry — used in
+// the bucketed COUNT FILTER clauses above.
+void sourceClaims
