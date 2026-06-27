@@ -1,11 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest"
-import { and, eq, inArray } from "drizzle-orm"
+import { describe, it, expect } from "vitest"
+import { eq } from "drizzle-orm"
 import { db } from "@/db/client"
-import { cards, sourceDocuments } from "@/db/schema/catalog"
+import { cards } from "@/db/schema/catalog"
 import {
   crossCheckGroups,
   reviewTasks,
-  sourceClaims,
 } from "@/db/schema/extraction"
 import {
   SOURCE_PRIORITY_WEIGHTS,
@@ -271,33 +270,14 @@ describe("P4 — pure helpers", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("P4 aggregator — live integration against hsbc-red", () => {
-  beforeAll(async () => {
-    // Best-effort cleanup of any residue from earlier runs.
-    await db
-      .delete(reviewTasks)
-      .where(eq(reviewTasks.title, "__p4_test_placeholder__"))
-  })
-
-  afterAll(async () => {
-    // Roll back every group + task we created against hsbc-red, so the
-    // /review queue stays clean for the live runner to populate.
-    const hsbcRedCard = (
-      await db.select({ id: cards.id }).from(cards).where(eq(cards.slug, "hsbc-red"))
-    )[0]
-    if (!hsbcRedCard) return
-    // 1. Detach claims from any groups we created (FK on set null already,
-    //    but explicit prevents lingering pointers).
-    await db
-      .update(sourceClaims)
-      .set({ crossCheckGroupId: null })
-      .where(eq(sourceClaims.cardId, hsbcRedCard.id))
-    // 2. Tasks first (they reference the group).
-    await db.delete(reviewTasks).where(eq(reviewTasks.cardId, hsbcRedCard.id))
-    // 3. Groups.
-    await db
-      .delete(crossCheckGroups)
-      .where(eq(crossCheckGroups.cardId, hsbcRedCard.id))
-  })
+  // Deliberately no afterAll cleanup. The aggregator is idempotent (D12);
+  // re-running tests upserts the same rows rather than multiplying them.
+  // Keeping the state lets the /review page display real data across dev
+  // sessions without forcing a `pnpm p4:aggregate` after every `pnpm test`.
+  // If you need a clean slate, run:
+  //   docker exec am-postgres psql -U am -d am \\
+  //     -c "DELETE FROM review_tasks WHERE card_id IN (SELECT id FROM cards WHERE slug = 'hsbc-red');" \\
+  //     -c "DELETE FROM cross_check_groups WHERE card_id IN (SELECT id FROM cards WHERE slug = 'hsbc-red');"
 
   it("produces ≥1 agreed, ≥1 single_source group, plus claim+group counts that match the DB", async () => {
     const events: Array<{
@@ -328,9 +308,11 @@ describe("P4 aggregator — live integration against hsbc-red", () => {
     // mention → at least one single_source group.
     expect(summary.singleSource).toBeGreaterThanOrEqual(1)
 
-    // Task creation count should equal groups created (every new group
-    // gets exactly one auto-created task on first aggregator run).
-    expect(summary.reviewTasksCreated).toBe(summary.groupsTotal)
+    // reviewTasksCreated ≤ groupsTotal (can be less when prior runs already
+    // created the tasks — afterAll cleanup is deliberately omitted, see
+    // comment at the top of this describe block). Idempotency proper is
+    // pinned in the next test.
+    expect(summary.reviewTasksCreated).toBeLessThanOrEqual(summary.groupsTotal)
 
     // Per-card breakdown lines up.
     const perCard = summary.perCard["hsbc-red"]
@@ -399,7 +381,3 @@ describe("P4 aggregator — live integration against hsbc-red", () => {
   })
 })
 
-// Reference unused imports to satisfy the linter (used in cleanup).
-void and
-void inArray
-void sourceDocuments

@@ -8,6 +8,7 @@
 //   5. M15 edit-rule refusal gate (economic change on approved rule refused)
 //   6. M16 /projection-test renders + welcome offer toggle changes total
 //   7. M17 /dashboard renders counts + 0.0% custom_note schema-health metric
+//   8. P5 /review queue renders + open-conflict count is visible
 
 import { chromium } from "playwright"
 
@@ -123,6 +124,24 @@ async function main() {
     .first()
     .textContent()
   console.log(`cards count headline: ${cardsCount?.trim()}`)
+
+  console.log("\n=== Test 8: P5 /review queue renders + open-conflict count ===")
+  await page.goto("http://localhost:3000/review", { waitUntil: "networkidle" })
+  // PageHeader renders a <div>, not <header>. Grab the subtitle div by
+  // walking from the h1 to its sibling subtitle div.
+  const subtitle = await page
+    .locator("div:has(> h1:text-is('Review queue')) > div.mt-0\\.5")
+    .first()
+    .textContent()
+  console.log(`header subtitle: ${subtitle?.trim().replace(/\s+/g, " ")}`)
+  // Default filter is status=open. Count rendered table rows.
+  const rowCount = await page.locator("table tbody tr").count()
+  console.log(`open task rows rendered: ${rowCount}`)
+  // Confirm a row exists with verdict 'conflict' (rose-toned StatusBadge).
+  const conflictRow = await page
+    .locator("table tbody tr:has(span:text-is('conflict'))")
+    .count()
+  console.log(`rows containing a conflict verdict badge: ${conflictRow}`)
 
   await browser.close()
 }

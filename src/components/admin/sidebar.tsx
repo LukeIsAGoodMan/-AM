@@ -12,6 +12,7 @@ import {
   Store,
   Calculator,
   LineChart,
+  ClipboardCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/cards", label: "Cards", icon: CreditCard, ready: true },
   { href: "/rules", label: "Rules", icon: Receipt, ready: true },
   { href: "/sources", label: "Sources", icon: FileText, ready: true },
+  { href: "/review", label: "Review", icon: ClipboardCheck, ready: true },
   { href: "/welcome-offers", label: "Welcome Offers", icon: Gift, ready: false },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone, ready: false },
   { href: "/merchants", label: "Merchants", icon: Store, ready: false },
