@@ -23,6 +23,31 @@ sources:
     status: active
     notes: M2 placeholder source. Replace with real T&C PDF in M9.
 
+  - slug: hsbc-red-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: HSBC Red Credit Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/hsbc-red-credit-card
+    language: en
+    status: active
+    notes: |
+      P8 — multi-source pull. MoneyHero aggregator page for cross-check
+      against the official page. Should agree on 4% online + cap, may
+      diverge on edge cases (welcome offer wording, designated merchant
+      list).
+
+  - slug: hsbc-red-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: HSBC Red Credit Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/hsbc-red-mastercard/
+    language: zh_hk
+    status: active
+    notes: |
+      P8 — multi-source pull. 里先生 (Mr. Miles) is a popular HK
+      personal-finance blog. Counts as a 2nd independent competitor
+      voice; expected to corroborate the headline 4% online rate.
+
 rules:
   - slug: hsbc-red__base_earn
     ruleName: Base earn (0.4%)
