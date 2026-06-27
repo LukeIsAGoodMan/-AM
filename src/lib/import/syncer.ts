@@ -405,11 +405,20 @@ export async function sync(db: DB, dataset: LoadedDataset): Promise<SyncReport> 
   }
 
   // Phase E: archive missing rules / welcome offers / campaigns
+  //
+  // P7/P9 carve-out: rules whose slug starts with `xchk__` were
+  // materialized from cross_check_groups, not from YAML — they live in
+  // the DB by design (D16). Excluding them from the archive sweep
+  // prevents `pnpm import:data` from silently demoting every
+  // materialized rule the next time the YAML is touched.
   const dbRules = await db
     .select({ id: rewardRules.id, slug: rewardRules.slug, status: rewardRules.status })
     .from(rewardRules)
   const toArchiveRules = dbRules.filter(
-    (r) => r.status !== "archived" && !yamlRuleSlugs.has(r.slug),
+    (r) =>
+      r.status !== "archived" &&
+      !yamlRuleSlugs.has(r.slug) &&
+      !r.slug.startsWith("xchk__"),
   )
   if (toArchiveRules.length > 0) {
     await db

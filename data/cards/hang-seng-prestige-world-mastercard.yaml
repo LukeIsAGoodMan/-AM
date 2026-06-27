@@ -4,7 +4,7 @@ card:
   cardNameEn: Hang Seng Prestige World Mastercard
   network: Mastercard
   annualFeeHkd: 3800
-  status: draft
+  status: active
   officialUrl: https://www.hangseng.com
   notes: >-
     Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
@@ -25,5 +25,35 @@ card:
       bonusType: Points
       bonusValueText: 30k points
       periodDays: 90
-sources: []
+sources:
+  - slug: hang-seng-prestige-world-mastercard-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Hang Seng Prestige World Mastercard — official page
+    url: https://www.hangseng.com
+    language: mixed
+    status: active
+    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+
+  - slug: hang-seng-prestige-world-mastercard-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng Prestige World Mastercard — MoneyHero review (zh)
+    url: https://www.moneyhero.com.hk/zh/credit-card/products/hang-seng-prestige-world-mastercard
+    language: zh_hk
+    status: active
+    notes: P9-style multi-source pull (MoneyHero aggregator; only zh page exists).
+
+  - slug: hang-seng-prestige-world-mastercard-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng Prestige banking overview — 里先生 Mr. Miles (zh)
+    url: https://www.mrmiles.hk/hang-seng-prestige/
+    language: zh_hk
+    status: active
+    notes: |
+      P9-style multi-source pull. Mr. Miles has no dedicated card-review
+      page; substituted the Prestige banking overview which covers the
+      World Mastercard's lounge/insurance privileges.
+
 rules: []

@@ -4,7 +4,7 @@ card:
   cardNameEn: HSBC Visa Signature Card
   network: Visa
   annualFeeHkd: 1800
-  status: draft
+  status: active
   officialUrl: https://www.hsbc.com.hk
   notes: >-
     Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
@@ -25,5 +25,32 @@ card:
       bonusType: Cashback
       bonusValueText: HK$800 RewardCash
       periodDays: 60
-sources: []
+sources:
+  - slug: hsbc-visa-signature-card-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: HSBC Visa Signature Card — official page
+    url: https://www.hsbc.com.hk
+    language: mixed
+    status: active
+    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+
+  - slug: hsbc-visa-signature-card-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: HSBC Visa Signature Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/hsbc-visa-signature-card
+    language: en
+    status: active
+    notes: P9-style multi-source pull (MoneyHero aggregator).
+
+  - slug: hsbc-visa-signature-card-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: HSBC Visa Signature Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/hsbc-visa-signature/
+    language: zh_hk
+    status: active
+    notes: P9-style multi-source pull (里先生 Mr. Miles blog).
+
 rules: []

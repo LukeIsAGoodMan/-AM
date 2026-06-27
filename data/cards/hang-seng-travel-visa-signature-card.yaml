@@ -4,7 +4,7 @@ card:
   cardNameEn: Hang Seng Travel+ Visa Signature Card
   network: Visa
   annualFeeHkd: 0
-  status: draft
+  status: active
   officialUrl: https://www.hangseng.com
   notes: >-
     Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
@@ -25,5 +25,32 @@ card:
       bonusType: Voucher
       bonusValueText: HK$200 voucher
       periodDays: 90
-sources: []
+sources:
+  - slug: hang-seng-travel-visa-signature-card-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Hang Seng Travel+ Visa Signature Card — official page
+    url: https://www.hangseng.com
+    language: mixed
+    status: active
+    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+
+  - slug: hang-seng-travel-visa-signature-card-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng Travel+ Visa Signature Card — MoneyHero review (zh)
+    url: https://www.moneyhero.com.hk/zh/credit-card/products/hang-seng-travel-visa-signature-card
+    language: zh_hk
+    status: active
+    notes: P9-style multi-source pull (MoneyHero aggregator; only zh page exists).
+
+  - slug: hang-seng-travel-visa-signature-card-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng Travel+ Visa Signature Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/travel-plus/
+    language: zh_hk
+    status: active
+    notes: P9-style multi-source pull (里先生 Mr. Miles blog).
+
 rules: []

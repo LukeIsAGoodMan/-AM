@@ -4,7 +4,7 @@ card:
   cardNameEn: HSBC Premier Mastercard
   network: Mastercard
   annualFeeHkd: 1500
-  status: draft
+  status: active
   officialUrl: https://www.hsbc.com.hk
   notes: >-
     Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
@@ -24,5 +24,27 @@ card:
       bonusType: Cashback
       bonusValueText: HK$800 RewardCash
       periodDays: 60
-sources: []
+sources:
+  - slug: hsbc-premier-mastercard-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: HSBC Premier Mastercard — official page
+    url: https://www.hsbc.com.hk
+    language: mixed
+    status: active
+    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+
+  - slug: hsbc-premier-mastercard-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: HSBC Premier Credit Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/hsbc-premier/
+    language: zh_hk
+    status: active
+    notes: |
+      P9-style multi-source pull — only 1 competitor source (Mr. Miles).
+      MoneyHero has no dedicated Premier Mastercard product page (their
+      HSBC product list only covers Red / Visa Signature / EveryMile /
+      Gold). Verdicts for this card will lean single_source.
+
 rules: []

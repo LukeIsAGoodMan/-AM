@@ -4,7 +4,7 @@ card:
   cardNameEn: Citi Rewards Mastercard
   network: Mastercard
   annualFeeHkd: 0
-  status: draft
+  status: active
   officialUrl: https://www.citibank.com.hk
   notes: >-
     Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
@@ -25,5 +25,32 @@ card:
       bonusType: Cashback
       bonusValueText: HK$1,200
       periodDays: 90
-sources: []
+sources:
+  - slug: citi-rewards-mastercard-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Citi Rewards Mastercard — official page
+    url: https://www.citibank.com.hk
+    language: mixed
+    status: active
+    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+
+  - slug: citi-rewards-mastercard-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Citi Rewards Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/citi-rewards-card
+    language: en
+    status: active
+    notes: P9-style multi-source pull (MoneyHero aggregator; slug uses /citi-rewards-card).
+
+  - slug: citi-rewards-mastercard-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Citi Rewards — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/citi-rewards/
+    language: zh_hk
+    status: active
+    notes: P9-style multi-source pull (里先生 Mr. Miles blog).
+
 rules: []

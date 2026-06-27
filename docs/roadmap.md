@@ -401,8 +401,22 @@ P9  ✅ Bulk run P8 across 10 more cards                 (2d)
     → 11 cards total · 484 source_claims · 187 cross_check
     groups (58 agreed / 87 single_source / 42 conflict) ·
     104 P7-materialized reward_rules. PRD §22.10 #2 + #3
-    + #4 all green. #1 still gated on draft→approved card
-    promotion which is downstream of P9's per-card pipeline.
+    + #4 all green.
+
+P9.5 ✅ Push draft→active for 14 more high-recognition   (data-curation,
+    cards (AE Platinum/Gold/Blue Cash, BOC Cheers          not engineering)
+    Signature, Citi Prestige/Rewards/Octopus, DBS
+    Eminent/Live Fresh, Hang Seng Travel+/Prestige,
+    HSBC Visa Signature/Premier, SC Smart).
+    → 25 active cards · 942 source_claims · 384 groups
+    (105 agreed / 199 single_source / 80 conflict) ·
+    199 P7-materialized rules. **PRD §22.10 #1 satisfied**
+    (25 ≥ 25). Cumulative LLM cost: $9.90.
+    Side-fix: syncer carve-out so import:data doesn't
+    archive xchk__ rules (they live in DB by D16).
+    Side-fix: diagnose's expectInTop5 widened to top-10
+    so a richer card universe + competing xchk__ rules
+    don't false-flag as calculator regressions.
 P10 ✅ Polish: extraction cost dashboard, claim         (1d)
     provenance on rule detail page.
     (Archive-superseded-claims sub-bullet deferred —

@@ -4,7 +4,7 @@ card:
   cardNameEn: American Express Platinum Card
   network: Amex
   annualFeeHkd: 9500
-  status: draft
+  status: active
   officialUrl: https://www.americanexpress.com/hk
   notes: >-
     Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
@@ -25,5 +25,32 @@ card:
       bonusType: Points
       bonusValueText: Up to 1,000,000 MR points
       periodDays: 90
-sources: []
+sources:
+  - slug: american-express-platinum-card-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: American Express Platinum Card — official page
+    url: https://www.americanexpress.com/hk
+    language: mixed
+    status: active
+    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+
+  - slug: american-express-platinum-card-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: American Express Platinum Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/the-platinum-card
+    language: en
+    status: active
+    notes: P9-style multi-source pull (MoneyHero aggregator, /the-platinum-card slug).
+
+  - slug: american-express-platinum-card-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: American Express Platinum Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/ae-platinum-card-centurion-lounge/
+    language: zh_hk
+    status: active
+    notes: P9-style multi-source pull (里先生 Mr. Miles blog).
+
 rules: []

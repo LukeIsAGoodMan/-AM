@@ -4,7 +4,7 @@ card:
   cardNameEn: Standard Chartered Smart Credit Card
   network: Mastercard
   annualFeeHkd: 0
-  status: draft
+  status: active
   officialUrl: https://www.sc.com/hk
   notes: >-
     Seeded from HK_credit_card_master_with_best_use_case.xlsx on 2026-06-18.
@@ -25,5 +25,32 @@ card:
       bonusType: Cashback
       bonusValueText: HK$600
       periodDays: 90
-sources: []
+sources:
+  - slug: standard-chartered-smart-credit-card-official-page
+    sourceType: official_page
+    sourcePriority: 2
+    title: Standard Chartered Smart Credit Card — official page
+    url: https://www.sc.com/hk
+    language: mixed
+    status: active
+    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+
+  - slug: standard-chartered-smart-credit-card-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Standard Chartered Smart Credit Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/standard-chartered-smart-credit-card
+    language: en
+    status: active
+    notes: P9-style multi-source pull (MoneyHero aggregator).
+
+  - slug: standard-chartered-smart-credit-card-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: SCB Smart Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/scb-smart/
+    language: zh_hk
+    status: active
+    notes: P9-style multi-source pull (里先生 Mr. Miles blog).
+
 rules: []
