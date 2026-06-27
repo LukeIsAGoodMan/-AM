@@ -378,19 +378,21 @@ Hand YAML scales to ~25 cards comfortably. Reaching the ~75 card universe needs 
 ### Phase 2 milestones (sized for sit-down PRs like MVP)
 
 ```
-P1  Migration: source_claims / extraction_runs /        (1d)
+P1  ✅ Migration: source_claims / extraction_runs /     (1d)
     cross_check_groups / review_tasks / reward_rule_sources
-P2  Extraction prompt v1 (Claude Opus 4.7,              (1.5d)
+P2  ✅ Extraction prompt v1 (Claude Opus 4.7,           (1.5d)
     schema-guided, one chunk → many claims)
-P3  Extraction runner: source_chunks → source_claims    (1d)
-P4  Cross-check aggregator + review_task auto-gen       (1.5d)
+P3  ✅ Extraction runner: source_chunks → source_claims (1d)
+P4  ✅ Cross-check aggregator + review_task auto-gen    (1.5d)
 P5  /review queue page (list + filters)                 (1d)
 P6  /review/[task] detail (side-by-side source vs claim,(1.5d)
     approve / edit-and-approve / reject / mark-conflict)
 P7  Auto-create reward_rule from approved claim         (1d)
     cluster + reward_rule_sources join
-P8  Multi-source scan: fetch official + 2 competitors   (1.5d)
+P8  ◑ Multi-source scan: fetch official + 2 competitors (1.5d)
     for one card → run extraction → produce 6-9 claims
+    (single-card slice done early for hsbc-red so P4 had
+    real cross-check data — bulk run remains for P9.)
 P9  Bulk run P8 across 10 more cards                    (2d)
     → demo: at least 1 real conflict detected and resolved
 P10 Polish: extraction cost dashboard, claim provenance (1d)
