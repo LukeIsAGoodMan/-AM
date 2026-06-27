@@ -10,6 +10,7 @@
 //   7. M17 /dashboard renders counts + 0.0% custom_note schema-health metric
 //   8. P5 /review queue renders + open-conflict count is visible
 //   9. P6 /review/[taskId] detail renders + approve+reopen roundtrip works
+//  10. P7 /rules surfaces xchk__-prefixed materialized rules
 
 import { chromium } from "playwright"
 
@@ -192,6 +193,31 @@ async function main() {
     .first()
     .isVisible()
   console.log(`after reopen, status badge shows 'open': ${reopenedBadge}`)
+
+  console.log(
+    "\n=== Test 10: P7 /rules surfaces xchk__-prefixed materialized rules ===",
+  )
+  await page.goto("http://localhost:3000/rules", { waitUntil: "networkidle" })
+  // Search the rules table for the xchk__ prefix used by the materializer.
+  // Rows with this slug came from cross_check_group materialization, not
+  // from hand-curated YAML.
+  const searchBox = page.locator(
+    "input[placeholder^='Search rule']",
+  )
+  await searchBox.fill("xchk")
+  await page.waitForTimeout(150)
+  const xchkRows = await page
+    .locator("table tbody tr:has(div.font-mono:has-text('xchk__'))")
+    .count()
+  console.log(`/rules rows with xchk__ slug after search: ${xchkRows}`)
+  // Also verify the header subtitle's total approved count includes them.
+  // The hint in subtitle is "<approved> approved", grab the number that
+  // precedes that literal word.
+  const rulesSubtitle = await page
+    .locator("div:has(> h1:text-is('Reward rules')) > div.mt-0\\.5")
+    .first()
+    .textContent()
+  console.log(`/rules header: ${rulesSubtitle?.trim().replace(/\s+/g, " ")}`)
 
   await browser.close()
 }

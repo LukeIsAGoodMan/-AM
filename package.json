@@ -24,6 +24,7 @@
     "p2:dry-run": "tsx --env-file=.env.local scripts/p2-dry-run.ts",
     "p3:run": "tsx --env-file=.env.local scripts/p3-run-extraction.ts",
     "p4:aggregate": "tsx --env-file=.env.local scripts/p4-aggregate.ts",
+    "p7:materialize": "tsx --env-file=.env.local scripts/p7-materialize.ts",
     "db:seed": "pnpm import:data"
   },
   "dependencies": {

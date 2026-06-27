@@ -388,8 +388,10 @@ P5  ✅ /review queue page (list + filters)              (1d)
 P6  ✅ /review/[task] detail (side-by-side source vs    (1.5d)
     claim, approve / reject / mark-conflict /
     edit-canonical / reopen)
-P7  Auto-create reward_rule from approved claim         (1d)
+P7  ✅ Auto-create reward_rule from approved claim      (1d)
     cluster + reward_rule_sources join
+    (earn_rate + exclusion; cap stitched in; other
+    claim_types skip cleanly per D16)
 P8  ◑ Multi-source scan: fetch official + 2 competitors (1.5d)
     for one card → run extraction → produce 6-9 claims
     (single-card slice done early for hsbc-red so P4 had

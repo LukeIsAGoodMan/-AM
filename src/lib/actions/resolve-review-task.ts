@@ -8,6 +8,10 @@ import {
   reviewTasks,
   sourceClaims,
 } from "@/db/schema/extraction"
+import {
+  materializeGroup,
+  type MaterializeOutcome,
+} from "@/lib/extraction/materializer"
 
 // P6 — reviewer actions on a review_task.
 //
@@ -44,7 +48,12 @@ export type ResolveAction =
   | { kind: "reopen" }
 
 export type ResolveResult =
-  | { ok: true; message: string; affectedClaims: number }
+  | {
+      ok: true
+      message: string
+      affectedClaims: number
+      materialized?: MaterializeOutcome
+    }
   | { ok: false; error: string }
 
 export async function resolveReviewTask(
@@ -86,6 +95,7 @@ export async function resolveReviewTask(
 
     let affected = 0
     let message = ""
+    let materialized: MaterializeOutcome | undefined
 
     if (action.kind === "approve") {
       // Supporting claims become approved; contradicting (if any) get
@@ -128,7 +138,31 @@ export async function resolveReviewTask(
           updatedAt: now,
         })
         .where(eq(reviewTasks.id, taskId))
-      message = `Approved. ${supportingIds.length} claim(s) approved, ${contradictingIds.length} rejected.`
+
+      // P7 — materialize the approved group into a reward_rule, when the
+      // group's claim_type is something P7 supports (earn_rate, exclusion;
+      // see materializer.ts header). Other claim_types are skipped with
+      // a reason that the UI banner surfaces. Materialization runs inside
+      // the same request but in its own transaction so a failure here
+      // leaves the approval state intact for a re-attempt via the CLI.
+      if (group) {
+        materialized = await materializeGroup(group.id)
+      }
+      const matSuffix = materialized
+        ? materialized.kind === "created"
+          ? ` Rule '${materialized.ruleSlug}' (${materialized.ruleType}) created.`
+          : materialized.kind === "skipped"
+            ? ` Materialization skipped: ${materialized.reason}.`
+            : ` Materialization failed: ${materialized.error}.`
+        : ""
+      message =
+        `Approved. ${supportingIds.length} claim(s) approved, ${contradictingIds.length} rejected.` +
+        matSuffix
+      // Re-render /rules too, since a newly-created rule should show up.
+      if (materialized?.kind === "created") {
+        revalidatePath("/rules")
+        revalidatePath(`/rules/${materialized.ruleSlug}`)
+      }
     } else if (action.kind === "reject") {
       if (allClaimIds.length > 0) {
         const res = await db
@@ -242,7 +276,7 @@ export async function resolveReviewTask(
     revalidatePath(`/review/${taskId}`)
 
     void task
-    return { ok: true, message, affectedClaims: affected }
+    return { ok: true, message, affectedClaims: affected, materialized }
   } catch (err) {
     return { ok: false, error: (err as Error).message }
   }
