@@ -9,6 +9,7 @@
 //   6. M16 /projection-test renders + welcome offer toggle changes total
 //   7. M17 /dashboard renders counts + 0.0% custom_note schema-health metric
 //   8. P5 /review queue renders + open-conflict count is visible
+//   9. P6 /review/[taskId] detail renders + approve+reopen roundtrip works
 
 import { chromium } from "playwright"
 
@@ -142,6 +143,55 @@ async function main() {
     .locator("table tbody tr:has(span:text-is('conflict'))")
     .count()
   console.log(`rows containing a conflict verdict badge: ${conflictRow}`)
+
+  console.log(
+    "\n=== Test 9: P6 /review/[taskId] renders + approve+reopen roundtrip ===",
+  )
+  // Capture the first 'open →' link in the default-open queue. Stable
+  // enough — even if test data shifts, the queue defaults to open status
+  // and there will be at least one task as long as P4 has been run.
+  const firstTaskHref = await page
+    .locator("a:text-is('open →')")
+    .first()
+    .getAttribute("href")
+  if (!firstTaskHref) throw new Error("No 'open →' link found on /review")
+  await page.goto(`http://localhost:3000${firstTaskHref}`, {
+    waitUntil: "networkidle",
+  })
+  // Title comes from review_tasks.title (e.g. "Confirm cross-check: hsbc-red · ...").
+  const detailTitle = await page.locator("h1").first().textContent()
+  console.log(`detail page title: ${detailTitle?.trim()}`)
+  // Supporting-claims section heading is "Supporting claims (N)".
+  const supportingHeading = await page
+    .locator("h2:has-text('Supporting claims')")
+    .first()
+    .textContent()
+  console.log(`supporting heading: ${supportingHeading?.trim()}`)
+  // Approve via the green button, wait for the success banner.
+  await page.click("button:has-text('Approve')")
+  await page.waitForSelector(".border-emerald-200", { timeout: 4000 })
+  const approveBanner = await page.locator(".border-emerald-200").textContent()
+  console.log(`approve banner: ${approveBanner?.trim().slice(0, 80)}`)
+  // After approve, header status badge should say "resolved". Wait for the
+  // page to revalidate before reading state (router.refresh is async).
+  await page.waitForSelector("span:text-is('resolved')", { timeout: 4000 })
+  const resolvedBadge = await page
+    .locator("span:text-is('resolved')")
+    .first()
+    .isVisible()
+  console.log(`task status badge shows 'resolved': ${resolvedBadge}`)
+  // Reopen — restores the demo state so subsequent verify:ui runs see the
+  // queue at full strength, and exercises the reopen action path.
+  await page.click("button:has-text('Reopen task')")
+  await page.waitForSelector(".border-emerald-200:has-text('Reopened')", {
+    timeout: 4000,
+  })
+  await page.waitForSelector("span:text-is('open')", { timeout: 4000 })
+  const reopenedBadge = await page
+    .locator("span:text-is('open')")
+    .first()
+    .isVisible()
+  console.log(`after reopen, status badge shows 'open': ${reopenedBadge}`)
 
   await browser.close()
 }

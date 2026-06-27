@@ -385,8 +385,9 @@ P2  ✅ Extraction prompt v1 (Claude Opus 4.7,           (1.5d)
 P3  ✅ Extraction runner: source_chunks → source_claims (1d)
 P4  ✅ Cross-check aggregator + review_task auto-gen    (1.5d)
 P5  ✅ /review queue page (list + filters)              (1d)
-P6  /review/[task] detail (side-by-side source vs claim,(1.5d)
-    approve / edit-and-approve / reject / mark-conflict)
+P6  ✅ /review/[task] detail (side-by-side source vs    (1.5d)
+    claim, approve / reject / mark-conflict /
+    edit-canonical / reopen)
 P7  Auto-create reward_rule from approved claim         (1d)
     cluster + reward_rule_sources join
 P8  ◑ Multi-source scan: fetch official + 2 competitors (1.5d)
