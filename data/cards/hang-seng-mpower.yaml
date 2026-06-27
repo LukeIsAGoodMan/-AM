@@ -23,6 +23,24 @@ sources:
     status: active
     notes: M3 placeholder source. Replace with real T&C PDF in M9.
 
+  - slug: hang-seng-mpower-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng MPOWER Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/hang-seng-mpower-card
+    language: en
+    status: active
+    notes: P9 — multi-source pull (MoneyHero aggregator).
+
+  - slug: hang-seng-mpower-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng MPOWER Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/mpower/
+    language: zh_hk
+    status: active
+    notes: P9 — multi-source pull (里先生 Mr. Miles blog).
+
 rules:
   - slug: hang-seng-mpower__tiered_monthly
     ruleName: MPOWER monthly tiered rebate

@@ -39,6 +39,24 @@ sources:
     status: active
     notes: Placeholder URL (issuer root). Replace with deep link / T&C PDF in Phase 2.
 
+  - slug: hsbc-everymile-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: HSBC EveryMile Credit Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/hsbc-everymile-credit-card
+    language: en
+    status: active
+    notes: P9 — multi-source pull (MoneyHero aggregator).
+
+  - slug: hsbc-everymile-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: HSBC EveryMile Credit Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/hsbc-everymile/
+    language: zh_hk
+    status: active
+    notes: P9 — multi-source pull (里先生 Mr. Miles blog).
+
 rules:
   - slug: hsbc-everymile__base_earn
     ruleName: Base earn (HK$8 = 1 mile)

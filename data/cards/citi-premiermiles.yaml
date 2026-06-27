@@ -24,6 +24,24 @@ sources:
     status: active
     notes: M4 placeholder source. Replace with real T&C PDF in M9.
 
+  - slug: citi-premiermiles-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Citi PremierMiles Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/citi-premiermiles-card
+    language: en
+    status: active
+    notes: P9 — multi-source pull (MoneyHero aggregator).
+
+  - slug: citi-premiermiles-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Citi PremierMiles Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/citi-premiermiles/
+    language: zh_hk
+    status: active
+    notes: P9 — multi-source pull (里先生 Mr. Miles blog).
+
 rules:
   - slug: citi-premiermiles__base_earn
     ruleName: Base earn (HK$8 = 1 mile)

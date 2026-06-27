@@ -283,7 +283,24 @@ async function materializeOneInternal(
 
   // Strip fields that live on the rule's flattened columns rather than
   // inside reward_formula_payload; the calculator reads them from columns.
-  const formulaPayload = pickFormulaPayload(rewardFormulaType, payload)
+  // Pass the card-level currency lookup as a fallback for points_per_hkd
+  // claims that didn't carry currencySlug inline.
+  const fallbackCurrencySlug =
+    typeof payload["rewardCurrencySlug"] === "string"
+      ? (payload["rewardCurrencySlug"] as string)
+      : null
+  const formulaPayload = pickFormulaPayload(
+    rewardFormulaType,
+    payload,
+    fallbackCurrencySlug,
+  )
+  if (!formulaPayload) {
+    return {
+      kind: "skipped",
+      groupId: group.id,
+      reason: `payload missing required fields for reward_formula_type '${rewardFormulaType}'`,
+    }
+  }
 
   // Atomic: insert rule + insert join rows + set group.approvedRuleId.
   // Single transaction so a mid-flight failure leaves no half-materialized
@@ -473,25 +490,45 @@ function pickStringArray(
 // flattened columns (categoryId, isOnline, capAmountHkd, etc.) duplicate
 // some of these; strip duplicates so the jsonb only contains the
 // formula-shape fields the calculator dispatches on.
+//
+// IMPORTANT: each formula type's required fields per Zod schema —
+// simple_percent { rate }, points_per_hkd { points, perHkd, currencySlug },
+// no_reward {}. Missing required fields will break the calculator at
+// rule-load time (RewardFormulaSchema.parse throws). When the extractor
+// doesn't emit `currencySlug` for a points_per_hkd claim, we fall back
+// to a sensible card-level default; if even that's unavailable, the
+// materializer returns null and the caller skips the group rather than
+// inserting a partial rule that would 500 the /rules page.
 function pickFormulaPayload(
   rewardFormulaType: string,
   src: Record<string, unknown>,
-): Record<string, unknown> {
+  fallbackCurrencySlug: string | null,
+): Record<string, unknown> | null {
   const out: Record<string, unknown> = { type: rewardFormulaType }
-  // simple_percent: { rate }
-  if (rewardFormulaType === "simple_percent" && typeof src["rate"] === "number") {
+  if (rewardFormulaType === "simple_percent") {
+    if (typeof src["rate"] !== "number") return null
     out["rate"] = src["rate"]
-  }
-  // points_per_hkd: { points, perHkd }
-  if (rewardFormulaType === "points_per_hkd") {
-    if (typeof src["points"] === "number") out["points"] = src["points"]
-    if (typeof src["perHkd"] === "number") out["perHkd"] = src["perHkd"]
-  }
-  // no_reward (used by exclusion rules): payload is just { type:'no_reward' }.
-  // The calculator skips reward computation for these and zeroes the rules
-  // they apply to (via the flat appliesTo column).
-  if (rewardFormulaType === "no_reward") {
-    out["type"] = "no_reward"
+  } else if (rewardFormulaType === "points_per_hkd") {
+    if (typeof src["points"] !== "number") return null
+    if (typeof src["perHkd"] !== "number") return null
+    out["points"] = src["points"]
+    out["perHkd"] = src["perHkd"]
+    const currency =
+      typeof src["currencySlug"] === "string"
+        ? (src["currencySlug"] as string)
+        : fallbackCurrencySlug
+    if (!currency) return null
+    out["currencySlug"] = currency
+  } else if (rewardFormulaType === "no_reward") {
+    // Exclusion rules — payload is just { type:'no_reward' }. Calculator
+    // skips reward computation; appliesTo on the flat column controls
+    // which rules get zeroed.
+    return out
+  } else {
+    // tiered_* fall through with just `type`; they're not produced by P7
+    // today (no extractor support yet). Returning a minimal payload would
+    // fail Zod parse, so refuse explicitly.
+    return null
   }
   return out
 }

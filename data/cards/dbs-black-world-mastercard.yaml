@@ -36,6 +36,24 @@ sources:
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link / T&C PDF when verified.
 
+  - slug: dbs-black-world-mastercard-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: DBS Black World Mastercard — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/dbs-black-world-mastercard
+    language: en
+    status: active
+    notes: P9 — multi-source pull (MoneyHero aggregator).
+
+  - slug: dbs-black-world-mastercard-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: DBS Black World Mastercard — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/dbs-black-card-world-master/
+    language: zh_hk
+    status: active
+    notes: P9 — multi-source pull (里先生 Mr. Miles blog).
+
 rules:
   - slug: dbs-black-world-mastercard__base_earn
     ruleName: Base earn (0.5%)

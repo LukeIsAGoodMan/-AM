@@ -36,6 +36,24 @@ sources:
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.
 
+  - slug: american-express-explorer-credit-card-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: American Express Explorer Credit Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/american-express-explorer-credit-card
+    language: en
+    status: active
+    notes: P9 — multi-source pull (MoneyHero aggregator).
+
+  - slug: american-express-explorer-credit-card-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: American Express Explorer Credit Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/ae-explorer/
+    language: zh_hk
+    status: active
+    notes: P9 — multi-source pull (里先生 Mr. Miles blog).
+
 rules:
   - slug: american-express-explorer-credit-card__base_earn
     ruleName: Base earn (HK$5 = 1 MR)

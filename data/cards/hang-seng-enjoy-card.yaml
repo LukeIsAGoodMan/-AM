@@ -40,6 +40,28 @@ sources:
     status: active
     notes: Placeholder URL. Replace with deep link / T&C PDF in Phase 2.
 
+  - slug: hang-seng-enjoy-flyformiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng enJoy Card — 小斯 flyformiles review (zh)
+    url: https://flyformiles.hk/7727/
+    language: zh_hk
+    status: active
+    notes: |
+      P9 — multi-source pull. MoneyHero has no dedicated enJoy product
+      page (only the comparison hub), so substituted 小斯/flyformiles.
+      Numeric-id route works; full URL has Chinese path slug that
+      cheerio handles inconsistently.
+
+  - slug: hang-seng-enjoy-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: Hang Seng enJoy Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/enjoy-card/
+    language: zh_hk
+    status: active
+    notes: P9 — multi-source pull (里先生 Mr. Miles blog).
+
 rules:
   - slug: hang-seng-enjoy__base_earn
     ruleName: Base earn (0.4%)

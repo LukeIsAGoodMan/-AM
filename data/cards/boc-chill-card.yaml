@@ -36,6 +36,24 @@ sources:
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.
 
+  - slug: boc-chill-card-moneyhero
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: BOC Chill Card — MoneyHero review (en)
+    url: https://www.moneyhero.com.hk/en/credit-card/products/boc-chill-card
+    language: en
+    status: active
+    notes: P9 — multi-source pull (MoneyHero aggregator).
+
+  - slug: boc-chill-card-mrmiles
+    sourceType: competitor_page
+    sourcePriority: 5
+    title: BOC Chill Card — 里先生 Mr. Miles review (zh)
+    url: https://www.mrmiles.hk/boc-chill/
+    language: zh_hk
+    status: active
+    notes: P9 — multi-source pull (里先生 Mr. Miles blog).
+
 rules:
   - slug: boc-chill-card__base_earn
     ruleName: Base earn (0.4%)

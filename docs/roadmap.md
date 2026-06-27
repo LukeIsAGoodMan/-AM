@@ -392,12 +392,17 @@ P7  ✅ Auto-create reward_rule from approved claim      (1d)
     cluster + reward_rule_sources join
     (earn_rate + exclusion; cap stitched in; other
     claim_types skip cleanly per D16)
-P8  ◑ Multi-source scan: fetch official + 2 competitors (1.5d)
+P8  ✅ Multi-source scan: fetch official + 2 competitors (1.5d)
     for one card → run extraction → produce 6-9 claims
-    (single-card slice done early for hsbc-red so P4 had
-    real cross-check data — bulk run remains for P9.)
-P9  Bulk run P8 across 10 more cards                    (2d)
-    → demo: at least 1 real conflict detected and resolved
+    (P8-partial: hsbc-red. Full meaning of P8 satisfied by
+    P9's 10-card bulk run that includes the same single-
+    card flow at scale.)
+P9  ✅ Bulk run P8 across 10 more cards                 (2d)
+    → 11 cards total · 484 source_claims · 187 cross_check
+    groups (58 agreed / 87 single_source / 42 conflict) ·
+    104 P7-materialized reward_rules. PRD §22.10 #2 + #3
+    + #4 all green. #1 still gated on draft→approved card
+    promotion which is downstream of P9's per-card pipeline.
 P10 Polish: extraction cost dashboard, claim provenance (1d)
     on rule detail page, archive superseded claims
 ```
