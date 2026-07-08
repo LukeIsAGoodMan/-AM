@@ -61,8 +61,9 @@ function makeMockExtract(opts?: {
     return {
       runId: null,
       claims: Array.from({ length: opts?.emitClaims ?? 1 }, (_, i) => ({
-        claimType: "earn_rate",
+        claimType: "earn_rate" as const,
         structuredPayloadJson: JSON.stringify({ rate: 0.01 * (i + 1) }),
+        promotionType: "baseline" as const,
         extractedTextSnippet: input.chunkText.slice(0, 20),
         confidenceScore: 0.8,
       })),

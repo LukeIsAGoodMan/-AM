@@ -204,6 +204,41 @@ CLI default behavior is "no scope = no work" — must pass `--card-slug` or `--s
 
 ---
 
+## D17 (P2 v2) — `promotionType` mandatory tag; aggregator only groups baseline claims
+
+**Decision**: Every claim the extractor emits carries a mandatory `promotionType` enum tag (`baseline` / `referral_exclusive` / `conditional` / `time_limited` / `registration_required`). The tag rides inside `source_claims.structured_payload.promotionType` (no schema migration — the JSONB column already holds free-form per-claim shape). The P4 aggregator filters the working set to `promotionType='baseline'` claims only before grouping; non-baseline claims stay in `source_claims` as `status='pending_review'` but never contribute to any `cross_check_groups` row. `PROMPT_VERSION` bumps to `p2-v2`; the D14 `input_hash` semantics auto-invalidate every p2-v1 dedup entry, so a re-run over the same chunks produces fresh work.
+
+**Why**:
+- **The real-world pollution**: aggregator sites (MoneyHero, 里先生 Mr. Miles, 小斯 flyformiles, FlyAsia) interleave the CARD'S BASELINE TERMS with two other kinds of content: (a) their own referral commission cut re-packaged as "里先生独家 HK$1,600 現金回贈", and (b) time-limited campaigns ("推廣期至 2026-07-31"). The p2-v1 extractor emitted all of these as plain `welcome_offer` / `earn_rate` claims. The aggregator then grouped them together under `welcome_offer_default` / `category_slug=X`, and P7 materialized the inflated canonical as an approved reward_rule that the calculator started reasoning about. `pnpm diagnose` caught the effect (4 regressions in P9.5) but only because a hand-curated baseline was displaced — cards without a baseline just quietly ended up with fictional rules. Live SQL survey (search: "獨家 / 額外 / 里先生獨家 / MoneyHero exclusive" in `source_claims.extracted_text_snippet`) found this exact pattern on Citi Prestige, DBS Eminent, HSBC Visa Signature, and others.
+- **Tag at the extractor, not the reviewer**: the LLM sees the source_type in the user message + the surrounding text — it's the best-positioned actor to decide whether "首2個月簽 HK$5,000 賺 HK$1,600" is `baseline` (bank T&C) or `referral_exclusive` (aggregator payoff). Pushing the classification down to a manual reviewer for every claim would multiply review-queue load by 4x for a decision the LLM makes at zero marginal cost.
+- **Mandatory, not optional-with-default**: if `promotionType` were optional with a `baseline` default, silent LLM omission would recreate the pollution. Zod + JSON Schema `required` list forces the model to emit an explicit tag on every claim. A schema-violation → structured-outputs 400 → extraction_run marked failed → operator notices. Belt-and-suspenders — the p2-v2 prompt also puts the taxonomy inside the cached system-prompt block so the model can't miss it.
+- **Payload nesting vs new column**: adding `source_claims.promotion_type` would require migration 0012 + backfill for p2-v1 rows. Nesting inside `structured_payload` keeps schema untouched and works today. Trade-off: can't index/filter at the DB level, but P4 loads all pending claims into memory anyway (bounded set — ~1000 at Phase 2 scale). Migrate later if we ever need a `WHERE promotion_type = ...` query at DB level.
+- **Aggregator carve-out vs new group per type**: another design was to keep all promotion types in aggregator groups but add `promotionType` to the `key_dimension` string. That would produce 4x-5x more groups + review_tasks (baseline earn + referral earn + time-limited earn all separate) → reviewer queue explodes for no user-facing value. Non-baseline claims are visible in `/sources/[slug]` (raw claim view) if a reviewer wants to see them; they don't need their own review task.
+
+**Knock-on**:
+- `PROMPT_VERSION='p2-v2'` invalidates all p2-v1 `extraction_runs.input_hash` values (D14 hash includes prompt_version). Existing p2-v1 `source_claims` rows are marked `status='superseded'` before the p2-v2 re-run so the aggregator only sees fresh claims. Materialized xchk__ rules from p2-v1 canonical get nuked in the same transition (they were built on polluted canonicals).
+- Runner + extractor tests need mocks updated: `ExtractResult.claims` shape now requires `promotionType`. Missed this in the first pass → typecheck failure caught it.
+- Prompt test pins added: (a) every `PromotionType.options` value must appear in `SYSTEM_PROMPT` (mirrors the claim_type pin), (b) JSON Schema's `required` list contains `promotionType`, (c) Zod rejects an unknown promotionType value, (d) Zod rejects a missing promotionType.
+- The `AggregateSummary` grows a `claimsSkippedNonBaseline` field so P4 CLI + `/dashboard` telemetry can report how much promotional noise the filter caught. A card whose non-baseline count is close to its total-scanned count is a data-quality flag ("this source has more marketing than facts") for the reviewer.
+- Backward compat for p2-v1 claims: the filter reads `payload.promotionType` and treats missing as baseline. So during a mid-transition run (some p2-v1, some p2-v2 claims), old ones still flow. In practice we supersede all p2-v1 before re-running so this branch never fires — but it prevents accidental drop on partial re-run.
+
+---
+
+## D18 (P9.5 side-fix) — Syncer must skip xchk__ rules during archive sweep
+
+**Decision**: `src/lib/import/syncer.ts`'s Phase-E "rules in DB but missing from YAML → archived" sweep excludes rules whose slug starts with `xchk__`. Enforced by a one-line filter (`!r.slug.startsWith("xchk__")`) on `toArchiveRules`. Materialized rules live in the DB by design (D16) and have no YAML counterpart; without the carve-out, every `pnpm import:data` would archive all of them.
+
+**Why**:
+- **The bug bit once already**: first `pnpm import:data` in P9.5 silently archived 104 P7-materialized rules — the operator only noticed because the next `pnpm diagnose` came up wrong. A silent data-quality regression triggered by an unrelated YAML edit is exactly the kind of surprise the syncer is supposed to prevent.
+- **Slug prefix is the right carve-out granularity**: it's the same signal D16 uses to distinguish materialized vs hand-curated rules everywhere else (calculator, /rules provenance card, dashboard bar chart). One convention, everywhere.
+- **Alternative rejected — track origin column**: adding a `rewardRules.origin` column with values `yaml` / `xchk` is more explicit but requires migration + backfill + touching every reader. Slug prefix is zero-cost and already-load-bearing.
+
+**Knock-on**:
+- If a hand-curated rule ever gets slug-prefixed `xchk__` (accidentally or on purpose), the syncer will stop touching it. That's fine — the naming convention is documented in D16, and the failure mode is "rule doesn't get archived", not "rule gets corrupted".
+- The dashboard's `topCardsByMaterializedRules` query also uses `slug LIKE 'xchk__%'`. Same convention. Change either → change both.
+
+---
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:

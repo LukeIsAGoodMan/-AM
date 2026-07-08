@@ -422,6 +422,18 @@ P10 ✅ Polish: extraction cost dashboard, claim         (1d)
     (Archive-superseded-claims sub-bullet deferred —
     no user-facing demand; can add a small CLI later
     if review_tasks queue cleanup needs it.)
+
+P11 ✅ Prompt v2 — mandatory promotionType tag           (0.5d)
+    (baseline / referral_exclusive / conditional /
+    time_limited / registration_required). Aggregator
+    filters non-baseline claims out of grouping so
+    "里先生獨家 HK$1,600" style aggregator payoffs and
+    time-limited campaigns don't pollute the canonical
+    that P7 materializes. See D17 for the rationale +
+    knock-on. Live-corpus split ~60/40 baseline vs
+    promotional, matching the eyeballed pollution rate.
+    Superseded all p2-v1 claims + wiped xchk__ rules
+    + groups + tasks before the p2-v2 re-run.
 ```
 
 Total: ~12–13 sit-downs ≈ 3 working weeks for one person.

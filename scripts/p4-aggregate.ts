@@ -145,7 +145,7 @@ async function main() {
 
   console.log("─".repeat(80))
   console.log(
-    `Summary — scanned ${summary.claimsScanned} claims · ${summary.groupsTotal} groups (${summary.groupsInserted} new, ${summary.groupsUpdated} upd) · ${summary.reviewTasksCreated} review tasks created`,
+    `Summary — scanned ${summary.claimsScanned} claims (${summary.claimsSkippedNonBaseline} non-baseline skipped per D17) · ${summary.groupsTotal} groups (${summary.groupsInserted} new, ${summary.groupsUpdated} upd) · ${summary.reviewTasksCreated} review tasks created`,
   )
   console.log(
     `Verdicts: ${summary.agreed} agreed · ${summary.singleSource} single_source · ${summary.conflict} conflict`,

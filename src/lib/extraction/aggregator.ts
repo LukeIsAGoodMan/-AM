@@ -118,6 +118,9 @@ export type GroupEvent = {
 
 export type AggregateSummary = {
   claimsScanned: number
+  // p2-v2 (D17): claims skipped because promotionType != 'baseline'.
+  // These sit in source_claims for the reviewer but aren't grouped.
+  claimsSkippedNonBaseline: number
   groupsTotal: number
   groupsInserted: number
   groupsUpdated: number
@@ -158,6 +161,7 @@ export async function aggregateClaims(
 
   const summary: AggregateSummary = {
     claimsScanned: claims.length,
+    claimsSkippedNonBaseline: 0,
     groupsTotal: 0,
     groupsInserted: 0,
     groupsUpdated: 0,
@@ -168,12 +172,32 @@ export async function aggregateClaims(
     perCard: {},
   }
 
+  // p2-v2 promotion-type carve-out (D17): baseline claims are the only
+  // ones that flow into cross_check_groups + get materialized as reward
+  // rules. Referral-exclusive / conditional / time-limited claims sit as
+  // pending_review source_claims so the reviewer can see them, but they
+  // don't inflate any canonical_payload.
+  //
+  // Legacy claims from p2-v1 have no `promotionType` in their payload;
+  // we treat missing as baseline so a mid-transition run doesn't drop
+  // everything. Once p2-v2 rolls across the corpus and the operator
+  // supersedes p2-v1 claims (see D17), this default becomes moot.
+  const baselineClaims = claims.filter((c) => {
+    const p = c.structuredPayload as Record<string, unknown>
+    const t = p["promotionType"]
+    if (typeof t === "string" && t !== "baseline") {
+      summary.claimsSkippedNonBaseline += 1
+      return false
+    }
+    return true
+  })
+
   // Group claims in memory: card_id → claim_type → key_dimension → claims[].
   // Key skips (null) silently drop claims whose payload doesn't expose a
   // stable dimension — currently no claim_type returns null, but the
   // function is defensive in case the prompt emits something off-shape.
   const byGroup = new Map<string, { card: { id: string; slug: string }; claimType: string; keyDimension: string; claims: LoadedClaim[] }>()
-  for (const c of claims) {
+  for (const c of baselineClaims) {
     const dim = computeKeyDimension(c.claimType, c.structuredPayload)
     if (dim === null) continue
     const key = `${c.cardId}\t${c.claimType}\t${dim}`

@@ -4,6 +4,7 @@ import {
   EXTRACTION_OUTPUT_JSON_SCHEMA,
   ExtractionOutput,
   PROMPT_VERSION,
+  PromotionType,
   SYSTEM_PROMPT,
   buildUserMessage,
   parseStructuredPayload,
@@ -16,8 +17,8 @@ import {
 //   - User-message builder produces deterministic, cacheable output
 
 describe("P2 — prompt module invariants", () => {
-  it("prompt version is the stable 'p2-v1' constant", () => {
-    expect(PROMPT_VERSION).toBe("p2-v1")
+  it("prompt version is the stable 'p2-v2' constant", () => {
+    expect(PROMPT_VERSION).toBe("p2-v2")
   })
 
   it("SYSTEM_PROMPT mentions every claim_type by name (taxonomy in sync with enum)", () => {
@@ -29,11 +30,25 @@ describe("P2 — prompt module invariants", () => {
     }
   })
 
-  it("JSON schema enum stays in sync with Zod enum", () => {
+  it("SYSTEM_PROMPT mentions every promotionType by name (p2-v2 decision guide sync)", () => {
+    // Same principle as the claim_type pin — if a new promotion type
+    // gets added to the enum, this test forces the prompt's decision
+    // guide to teach the model about it.
+    for (const t of PromotionType.options) {
+      expect(SYSTEM_PROMPT).toContain(t)
+    }
+  })
+
+  it("JSON schema enum stays in sync with Zod enum (claimType + promotionType)", () => {
     const properties = EXTRACTION_OUTPUT_JSON_SCHEMA.properties
     const claimsItems = properties.claims.items
-    const claimTypeProperty = claimsItems.properties.claimType
-    expect(claimTypeProperty.enum).toEqual(ClaimType.options)
+    expect(claimsItems.properties.claimType.enum).toEqual(ClaimType.options)
+    expect(claimsItems.properties.promotionType.enum).toEqual(
+      PromotionType.options,
+    )
+    // promotionType is required — the whole point of p2-v2 is that the
+    // model can't quietly emit an untagged claim (see D17).
+    expect(claimsItems.required).toContain("promotionType")
   })
 
   it("JSON schema sets additionalProperties:false on every nested object (Anthropic structured-output requirement)", () => {
@@ -64,6 +79,7 @@ describe("P2 — prompt module invariants", () => {
             isOnline: true,
             categorySlug: "online_local",
           }),
+          promotionType: "baseline" as const,
           extractedTextSnippet: "4% RewardCash on online local spend",
           confidenceScore: 0.9,
         },
@@ -74,6 +90,7 @@ describe("P2 — prompt module invariants", () => {
             period: "year",
             basis: "spending",
           }),
+          promotionType: "baseline" as const,
           extractedTextSnippet: "subject to an annual cap of HKD 100,000",
           confidenceScore: 0.85,
           note: "Cap applies to the online bonus; not the base earn",
@@ -87,6 +104,38 @@ describe("P2 — prompt module invariants", () => {
     const payload = parseStructuredPayload(parsed.claims[0]!)
     expect(payload.rate).toBe(0.04)
     expect(payload.categorySlug).toBe("online_local")
+  })
+
+  it("Zod rejects a claim missing promotionType (p2-v2 mandatory tag)", () => {
+    expect(() =>
+      ExtractionOutput.parse({
+        claims: [
+          {
+            claimType: "earn_rate",
+            structuredPayloadJson: JSON.stringify({ rate: 0.04 }),
+            extractedTextSnippet: "4%",
+            confidenceScore: 0.9,
+            // promotionType intentionally missing
+          },
+        ],
+      }),
+    ).toThrow()
+  })
+
+  it("Zod rejects a claim with an unknown promotionType", () => {
+    expect(() =>
+      ExtractionOutput.parse({
+        claims: [
+          {
+            claimType: "earn_rate",
+            structuredPayloadJson: JSON.stringify({ rate: 0.04 }),
+            promotionType: "invented_type",
+            extractedTextSnippet: "4%",
+            confidenceScore: 0.9,
+          },
+        ],
+      }),
+    ).toThrow()
   })
 
   it("Zod schema accepts an empty-claims output (chunk wasn't extractable)", () => {
@@ -105,6 +154,7 @@ describe("P2 — prompt module invariants", () => {
           {
             claimType: "lucky_draw_offer",
             structuredPayloadJson: "{}",
+            promotionType: "baseline",
             extractedTextSnippet: "win a trip to Tokyo",
             confidenceScore: 0.5,
           },
@@ -120,6 +170,7 @@ describe("P2 — prompt module invariants", () => {
           {
             claimType: "earn_rate",
             structuredPayloadJson: JSON.stringify({ rate: 0.04 }),
+            promotionType: "baseline",
             extractedTextSnippet: "4%",
             confidenceScore: 1.5,
           },
@@ -135,6 +186,7 @@ describe("P2 — prompt module invariants", () => {
           {
             claimType: "earn_rate",
             structuredPayloadJson: JSON.stringify({ rate: 0.04 }),
+            promotionType: "baseline",
             extractedTextSnippet: "",
             confidenceScore: 0.9,
           },
@@ -146,6 +198,7 @@ describe("P2 — prompt module invariants", () => {
   it("parseStructuredPayload rejects non-object JSON (array, scalar, null)", () => {
     const baseValid = {
       claimType: "earn_rate" as const,
+      promotionType: "baseline" as const,
       extractedTextSnippet: "4%",
       confidenceScore: 0.9,
     }

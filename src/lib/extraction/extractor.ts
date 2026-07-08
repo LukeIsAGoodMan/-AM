@@ -239,11 +239,15 @@ export async function extractClaimsFromChunk(
             .where(eq(extractionRuns.id, runId))
           throw err
         }
+        // p2-v2 tag lives inside the structured payload — no schema migration
+        // needed (D17). Aggregator reads it back via `payload.promotionType`
+        // and filters non-baseline claims out of grouping so referral /
+        // conditional / time-limited promos don't pollute the canonical.
         rows.push({
           sourceId: input.sourceId,
           cardId: input.cardId,
           claimType: c.claimType,
-          structuredPayload: payload,
+          structuredPayload: { ...payload, promotionType: c.promotionType },
           extractedTextSnippet: c.extractedTextSnippet,
           extractionRunId: runId,
           extractedBy: MODEL_ID,

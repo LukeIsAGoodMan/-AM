@@ -507,10 +507,18 @@ function pickFormulaPayload(
   const out: Record<string, unknown> = { type: rewardFormulaType }
   if (rewardFormulaType === "simple_percent") {
     if (typeof src["rate"] !== "number") return null
+    // Sanity: RewardFormulaSchema requires rate ∈ [0, 1]. LLM sometimes
+    // extracts "1.95% FX surcharge" as `rate: -0.0195`; that's not a
+    // reward, it's a fee. Refuse — Zod would 500 the /rules page anyway.
+    if (src["rate"] < 0 || src["rate"] > 1) return null
     out["rate"] = src["rate"]
   } else if (rewardFormulaType === "points_per_hkd") {
     if (typeof src["points"] !== "number") return null
     if (typeof src["perHkd"] !== "number") return null
+    // Same bounds enforcement — points must be non-negative, perHkd
+    // positive (division by zero on the calculator side otherwise).
+    if (src["points"] < 0) return null
+    if (src["perHkd"] <= 0) return null
     out["points"] = src["points"]
     out["perHkd"] = src["perHkd"]
     const currency =
