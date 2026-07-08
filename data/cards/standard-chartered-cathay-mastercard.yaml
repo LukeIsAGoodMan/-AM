@@ -30,8 +30,8 @@ sources:
   - slug: standard-chartered-cathay-mastercard-official-page
     sourceType: official_page
     sourcePriority: 2
-    title: Standard Chartered Cathay Mastercard — official page
-    url: https://www.sc.com/hk
+    title: Standard Chartered Cathay Mastercard — official product page
+    url: https://www.sc.com/hk/credit-cards/cathay/
     language: mixed
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.

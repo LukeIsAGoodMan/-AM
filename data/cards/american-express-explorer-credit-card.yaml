@@ -31,7 +31,7 @@ sources:
     sourceType: official_page
     sourcePriority: 2
     title: American Express Explorer Credit Card — official page
-    url: https://www.americanexpress.com/hk
+    url: https://www.americanexpress.com/hk/en/credit-cards/explorer-credit-card/
     language: mixed
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.

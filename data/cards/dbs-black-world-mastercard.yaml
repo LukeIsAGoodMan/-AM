@@ -31,7 +31,7 @@ sources:
     sourceType: official_page
     sourcePriority: 2
     title: DBS Black World Mastercard — official product page
-    url: https://www.dbs.com.hk
+    url: https://www.dbs.com.hk/personal/credit-cards/credit-cards/black-mc
     language: mixed
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link / T&C PDF when verified.

@@ -28,8 +28,8 @@ sources:
   - slug: hsbc-premier-mastercard-official-page
     sourceType: official_page
     sourcePriority: 2
-    title: HSBC Premier Mastercard — official page
-    url: https://www.hsbc.com.hk
+    title: HSBC Premier Mastercard — official product page
+    url: https://www.hsbc.com.hk/credit-cards/products/premier-mastercard/
     language: mixed
     status: active
     notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.

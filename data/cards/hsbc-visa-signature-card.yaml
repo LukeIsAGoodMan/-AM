@@ -29,8 +29,8 @@ sources:
   - slug: hsbc-visa-signature-card-official-page
     sourceType: official_page
     sourcePriority: 2
-    title: HSBC Visa Signature Card — official page
-    url: https://www.hsbc.com.hk
+    title: HSBC Visa Signature Card — official product page
+    url: https://www.hsbc.com.hk/credit-cards/products/visa-signature/
     language: mixed
     status: active
     notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.

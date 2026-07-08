@@ -30,7 +30,7 @@ sources:
     sourceType: official_page
     sourcePriority: 2
     title: Citi Rewards Mastercard — official page
-    url: https://www.citibank.com.hk
+    url: https://www.citibank.com.hk/english/credit-cards/rewards-card/
     language: mixed
     status: active
     notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.

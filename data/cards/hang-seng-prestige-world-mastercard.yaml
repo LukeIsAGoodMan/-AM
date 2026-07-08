@@ -29,8 +29,8 @@ sources:
   - slug: hang-seng-prestige-world-mastercard-official-page
     sourceType: official_page
     sourcePriority: 2
-    title: Hang Seng Prestige World Mastercard — official page
-    url: https://www.hangseng.com
+    title: Hang Seng Prestige World Mastercard — official product page
+    url: https://www.hangseng.com/en-hk/personal/cards/products/world-mastercard/
     language: mixed
     status: active
     notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.

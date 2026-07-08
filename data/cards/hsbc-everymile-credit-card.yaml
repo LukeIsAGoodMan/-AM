@@ -33,11 +33,11 @@ sources:
   - slug: hsbc-everymile-official-page
     sourceType: official_page
     sourcePriority: 2
-    title: HSBC EveryMile Credit Card — official page
-    url: https://www.hsbc.com.hk
+    title: HSBC EveryMile Credit Card — official product page
+    url: https://www.hsbc.com.hk/credit-cards/products/everymile/
     language: mixed
     status: active
-    notes: Placeholder URL (issuer root). Replace with deep link / T&C PDF in Phase 2.
+    notes: B — deep-link to real product page (was issuer-root).
 
   - slug: hsbc-everymile-moneyhero
     sourceType: competitor_page

@@ -170,10 +170,20 @@ async function main() {
     .first()
     .textContent()
   console.log(`supporting heading: ${supportingHeading?.trim()}`)
-  // Approve via the green button, wait for the success banner.
+  // Approve via the green button, wait for the success banner. Post-B,
+  // supporting-claim cards are also emerald-tinted (bg-emerald-50/30) so
+  // `.border-emerald-200` alone matches multiple elements. Scope to the
+  // Actions card, whose only emerald element is the result banner
+  // (text-emerald-800 · bg-emerald-50 without the /30).
   await page.click("button:has-text('Approve')")
-  await page.waitForSelector(".border-emerald-200", { timeout: 4000 })
-  const approveBanner = await page.locator(".border-emerald-200").textContent()
+  await page.waitForSelector(
+    ".rounded-lg:has(h3:has-text('Actions')) .border-emerald-200",
+    { timeout: 6000 },
+  )
+  const approveBanner = await page
+    .locator(".rounded-lg:has(h3:has-text('Actions')) .border-emerald-200")
+    .first()
+    .textContent()
   console.log(`approve banner: ${approveBanner?.trim().slice(0, 80)}`)
   // After approve, header status badge should say "resolved". Wait for the
   // page to revalidate before reading state (router.refresh is async).
@@ -186,9 +196,10 @@ async function main() {
   // Reopen — restores the demo state so subsequent verify:ui runs see the
   // queue at full strength, and exercises the reopen action path.
   await page.click("button:has-text('Reopen task')")
-  await page.waitForSelector(".border-emerald-200:has-text('Reopened')", {
-    timeout: 4000,
-  })
+  await page.waitForSelector(
+    ".rounded-lg:has(h3:has-text('Actions')) .border-emerald-200:has-text('Reopened')",
+    { timeout: 6000 },
+  )
   await page.waitForSelector("span:text-is('open')", { timeout: 4000 })
   const reopenedBadge = await page
     .locator("span:text-is('open')")

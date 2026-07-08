@@ -31,7 +31,7 @@ sources:
     sourceType: official_page
     sourcePriority: 2
     title: BOC Chill Card — official page
-    url: https://www.bochk.com
+    url: https://www.bochk.com/en/creditcard/details/chillcard.html
     language: mixed
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.

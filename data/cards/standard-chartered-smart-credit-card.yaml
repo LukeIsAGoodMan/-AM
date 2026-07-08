@@ -29,8 +29,8 @@ sources:
   - slug: standard-chartered-smart-credit-card-official-page
     sourceType: official_page
     sourcePriority: 2
-    title: Standard Chartered Smart Credit Card — official page
-    url: https://www.sc.com/hk
+    title: Standard Chartered Smart Credit Card — official product page
+    url: https://www.sc.com/hk/credit-cards/smart/
     language: mixed
     status: active
     notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.

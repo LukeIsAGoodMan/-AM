@@ -29,8 +29,8 @@ sources:
   - slug: standard-chartered-simply-cash-visa-card-official-page
     sourceType: official_page
     sourcePriority: 2
-    title: Standard Chartered Simply Cash Visa Card — official page
-    url: https://www.sc.com/hk
+    title: Standard Chartered Simply Cash Visa Card — official product page
+    url: https://www.sc.com/hk/credit-cards/simplycash/
     language: mixed
     status: active
     notes: M9 placeholder URL (issuer root). Replace with deep link in Phase 2.

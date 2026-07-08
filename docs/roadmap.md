@@ -434,6 +434,21 @@ P11 ✅ Prompt v2 — mandatory promotionType tag           (0.5d)
     promotional, matching the eyeballed pollution rate.
     Superseded all p2-v1 claims + wiped xchk__ rules
     + groups + tasks before the p2-v2 re-run.
+
+P12 ✅ Deep-link 24 official_page sources                (0.5d)
+    (was issuer-root URLs like www.citibank.com.hk →
+    now www1.citibank.com.hk/english/credit-cards/
+    prestige-card etc.). Second half of the "aggregator
+    pollution" fix from D17: gives P4 a real P2-priority
+    anchor per card so competitor-only inflations show
+    as `contradicting` → `conflict` in the queue
+    instead of quietly getting materialized. B outcome:
+    +150 official-page chunks (was 41) · +231 new claims
+    · aggregator groups 341→374 · agreed 75→94 · conflict
+    67→80 (right direction — official anchor catches
+    disagreements) · xchk__ rules 175→190. BOC Chill
+    and BOC Cheers pages return 34 chars each (SPA-only
+    content); flagged for future PDF-source upgrade.
 ```
 
 Total: ~12–13 sit-downs ≈ 3 working weeks for one person.

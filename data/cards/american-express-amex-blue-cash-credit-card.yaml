@@ -30,10 +30,10 @@ sources:
     sourceType: official_page
     sourcePriority: 2
     title: AMEX Blue Cash Credit Card — official page
-    url: https://www.americanexpress.com/hk
-    language: mixed
+    url: https://www.americanexpress.com/hk/en/credit-cards/blue-cash-credit-card/
+    language: en
     status: active
-    notes: Phase 2 promotion — issuer-root URL; deep link / T&C PDF to follow.
+    notes: B — deep-link to real product page (was issuer-root).
 
   - slug: american-express-amex-blue-cash-credit-card-moneyhero
     sourceType: competitor_page
