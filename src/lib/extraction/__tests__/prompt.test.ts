@@ -17,8 +17,8 @@ import {
 //   - User-message builder produces deterministic, cacheable output
 
 describe("P2 — prompt module invariants", () => {
-  it("prompt version is the stable 'p2-v2' constant", () => {
-    expect(PROMPT_VERSION).toBe("p2-v2")
+  it("prompt version is the stable 'p2-v3' constant", () => {
+    expect(PROMPT_VERSION).toBe("p2-v3")
   })
 
   it("SYSTEM_PROMPT mentions every claim_type by name (taxonomy in sync with enum)", () => {
@@ -120,6 +120,24 @@ describe("P2 — prompt module invariants", () => {
         ],
       }),
     ).toThrow()
+  })
+
+  it("SYSTEM_PROMPT teaches p2-v3 cap gating fields (categorySlug + appliesTo)", () => {
+    // p2-v3 requires caps to carry the same category/applies_to gating as
+    // their earn_rate. The prompt must teach the model about it; if a future
+    // edit drops the guidance, this test forces us to notice.
+    expect(SYSTEM_PROMPT).toMatch(/categorySlug.*appliesTo/s)
+    // The Fare Rebate example (Citi Octopus 15% → HK$300/mo cap) is the
+    // canonical illustration. If the wording changes, verify the intent
+    // is still communicated.
+    expect(SYSTEM_PROMPT.toLowerCase()).toContain("public_transport")
+  })
+
+  it("SYSTEM_PROMPT warns against 'as low as' / 'up to' as base_earn (P13/P14 misclassification guard)", () => {
+    // HSBC EveryMile "at a rate as low as HKD2 = 1 mile" was extracted
+    // as base_earn in p2-v2 because the prompt didn't guard against
+    // marketing qualifiers. This test pins the mitigation.
+    expect(SYSTEM_PROMPT.toLowerCase()).toContain("as low as")
   })
 
   it("Zod rejects a claim with an unknown promotionType", () => {

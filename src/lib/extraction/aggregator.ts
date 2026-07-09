@@ -369,15 +369,23 @@ export function computeKeyDimension(
       return "rule_type=base_earn"
     }
     case "cap": {
-      // Cap is conceptually tied to an earn_rate. Most claims that emit
-      // a cap also carry the categorySlug; if they don't, fall back to
-      // the period+basis pair as a discriminator (so a year/spending cap
-      // doesn't collide with a month/reward cap).
+      // Cap is conceptually tied to an earn_rate. p2-v3 requires the
+      // extractor to emit the same gating fields on cap as on the earn_rate
+      // it belongs to (categorySlug OR appliesTo), so the materializer's
+      // cap-stitching can join by matching key_dimension. If neither is
+      // present, the cap is treated as card-level (aggregate-across-bonuses)
+      // and gets a distinct `_card_level` suffix so it doesn't collide with
+      // a category-specific cap of the same period/basis pair.
       const cat = pickString(payload, "categorySlug")
       if (cat) return `category_slug=${cat}`
+      const appliesTo = payload["appliesTo"]
+      if (Array.isArray(appliesTo) && appliesTo.length > 0) {
+        const sorted = [...appliesTo].map((v) => String(v).toLowerCase()).sort()
+        return `applies_to=${sorted.join(",")}`
+      }
       const period = pickString(payload, "period") ?? "unknown"
       const basis = pickString(payload, "basis") ?? "unknown"
-      return `cap_default=${period}_${basis}`
+      return `cap_default=${period}_${basis}_card_level`
     }
     case "exclusion": {
       // Group by what the exclusion applies to. appliesTo is an array;

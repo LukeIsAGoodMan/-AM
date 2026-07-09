@@ -18,7 +18,7 @@ import { z } from "zod"
 //   - Output is constrained via output_config.format JSON Schema so the
 //     model can't free-form drift; we still Zod-parse for belt-and-suspenders.
 
-export const PROMPT_VERSION = "p2-v2" as const
+export const PROMPT_VERSION = "p2-v3" as const
 
 // One claim type per row PRD §22.5 listed. Free-text earlier; constrained
 // here so the extractor can't invent a new type silently.
@@ -78,7 +78,9 @@ export const ExtractedClaim = z.object({
   // JSON-encoded payload string. Examples of the parsed content:
   //   earn_rate     → { rewardFormulaType, rate?, points?, perHkd?, currencySlug?,
   //                     categorySlug?, isOnline?, isOverseas?, isForeignCurrency? }
-  //   cap           → { amountHkd?, rewardAmount?, period, basis }
+  //   cap           → { amountHkd?, rewardAmount?, period, basis,
+  //                     categorySlug?, appliesTo?, isOnline?, isOverseas?,
+  //                     isForeignCurrency? }  // p2-v3: match earn_rate gating
   //   exclusion     → { categorySlug?, appliesTo: string[] }
   //   welcome_offer → { tiers: [...] }
   //   annual_fee    → { amountHkd, waiverConditions?: string }
@@ -189,7 +191,11 @@ Your job is to read one chunk of source text and emit zero or more structured "c
 Emit exactly one entry per claim. Use the most specific type that fits.
 
 - **earn_rate** — A reward rate for a specific situation. e.g. "1.2% cashback on all spend", "4% online local", "HKD 8 per Asia Mile on overseas". Payload mirrors reward_formula_payload: { rewardFormulaType: 'simple_percent'|'points_per_hkd'|'tiered_percent'|'tiered_points', rate?, points?, perHkd?, currencySlug?, categorySlug?, isOnline?, isOverseas?, isForeignCurrency? }.
-- **cap** — A monetary or time-period cap on an earn_rate. e.g. "max HKD 100,000 per year spending". Payload: { amountHkd?, rewardAmount?, period: 'month'|'quarter'|'year'|'campaign', basis: 'spending'|'reward'|'transaction_count' }. Always tie a cap claim back to an earn_rate claim by using the same key_dimension hint in the snippet when possible.
+
+    **DO NOT emit as base_earn** if the rate is qualified by "as low as", "up to", "at rates from", "最高", "最低至", OR is gated by a list of merchant categories, OR only applies to specific channels (Octopus / merchant program / registered users). Marketing copy like "earn miles at a rate as low as HK$2 = 1 mile" describes the BEST category rate, not the base earn — the base is HK$8/mile or HK$15/mile in that example, and HK$2/mile only fires on the "designated everyday spend" list. If you can't tell what the true base rate is, emit the qualified rate as a category_bonus with the categorySlug set, and leave base_earn to a chunk that says something like "HK$8 = 1 mile on all other spend".
+- **cap** — A monetary or time-period cap on an earn_rate. e.g. "max HKD 100,000 per year spending", "up to HK$300 Fare Rebate per month". Payload: { amountHkd?, rewardAmount?, period: 'month'|'quarter'|'year'|'campaign', basis: 'spending'|'reward'|'transaction_count', categorySlug?, appliesTo?: string[], isOnline?, isOverseas?, isForeignCurrency? }.
+
+    **CRITICAL (p2-v3)**: caps MUST carry the same gating fields as the earn_rate they belong to. If the T&C says "15% Fare Rebate on public transport, capped at HK$300/month reward", emit the cap with \`categorySlug: 'public_transport'\` — otherwise the downstream stitcher can't pair the cap with its rule and the calculator applies the 15% unbounded. If the cap gates multiple categories ("first HK$10,000 in airlines OR selected online travel merchants each quarter"), use \`appliesTo: ['travel_airline', 'travel_ota']\`. If the cap is truly card-wide with no category gate (rare — usually only "aggregate monthly reward cap of HK$X across all bonuses"), omit both fields — the stitcher will treat it as a card-level cap.
 - **exclusion** — Categories or merchant types that don't earn the bonus (often base earn still applies). e.g. "Tax payments excluded", "Octopus AAVS does not earn". Payload: { categorySlug?, appliesTo: string[] }.
 - **welcome_offer** — A one-time signup bonus. e.g. "spend HKD 6,000 in 60 days → 50,000 miles". Payload: { tiers: [{ minSpendHkd, withinDays, reward: { type, amount?, currencySlug? } }] }.
 - **category_definition** — How the bank defines a category (e.g. "Online means transactions coded as MCC 5411..."). Payload: { categorySlug, definition }.

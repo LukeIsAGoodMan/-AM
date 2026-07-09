@@ -52,10 +52,31 @@ describe("P4 — pure helpers", () => {
       ).toBe("category_slug=online_local")
     })
 
-    it("cap without categorySlug → period+basis composite", () => {
+    it("cap with appliesTo array → sorted join (order-insensitive)", () => {
+      // p2-v3 lets caps gate multiple categories the same way exclusions
+      // do. "first HK$10,000 in airlines or selected online travel merchants"
+      // → appliesTo:['travel_airline', 'travel_ota'].
+      const a = computeKeyDimension("cap", {
+        appliesTo: ["travel_ota", "travel_airline"],
+        period: "quarter",
+        basis: "spending",
+      })
+      const b = computeKeyDimension("cap", {
+        appliesTo: ["travel_airline", "travel_ota"],
+        period: "quarter",
+        basis: "spending",
+      })
+      expect(a).toBe(b)
+      expect(a).toBe("applies_to=travel_airline,travel_ota")
+    })
+
+    it("cap without categorySlug or appliesTo → card-level suffix (won't collide with category-gated caps)", () => {
+      // p2-v3: a truly card-level cap ("aggregate monthly bonus cap of HK$500")
+      // gets the _card_level suffix so it doesn't collide with a category-
+      // specific cap that happens to share the same period/basis pair.
       expect(
         computeKeyDimension("cap", { amountHkd: 500, period: "month", basis: "reward" }),
-      ).toBe("cap_default=month_reward")
+      ).toBe("cap_default=month_reward_card_level")
     })
 
     it("exclusion with appliesTo array → sorted join (order-insensitive)", () => {
