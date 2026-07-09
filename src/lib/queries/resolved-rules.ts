@@ -106,6 +106,19 @@ function mapRow(row: Row): ResolvedRule {
   // than silently miscompute.
   const formula = RewardFormulaSchema.parse(r.rewardFormulaPayload)
 
+  // D19: a points_per_hkd rule with NULL reward_currency_id can only happen
+  // if the row was inserted without going through syncer's currency check
+  // (i.e. the P7 materializer bug that landed miles rules with a null FK).
+  // Fallbacking to hkd_cashback + 1.0 HKD/mile silently inflates rewards
+  // ~10×. Refuse to serve — force the fix upstream.
+  if (formula.type === "points_per_hkd" && row.currencyValueHkd === null) {
+    throw new Error(
+      `Rule '${r.slug}' is points_per_hkd but reward_currency_id is NULL. ` +
+        `This means the payload's currencySlug isn't in reward_currencies. ` +
+        `Refusing to load — see D19.`,
+    )
+  }
+
   const cap: ResolvedCap | null =
     r.capBasis !== null
       ? {

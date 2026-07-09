@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest"
-import { and, eq, inArray, like } from "drizzle-orm"
+import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { db } from "@/db/client"
 import { cards, rewardRules } from "@/db/schema/catalog"
 import {
@@ -188,6 +188,43 @@ describe("P7 materializer — single-group entry point", () => {
       "00000000-0000-0000-0000-000000000000",
     )
     expect(outcome.kind).toBe("failed")
+  })
+
+  // D19 regression — before the P13 fix, a points_per_hkd group whose
+  // currencySlug wasn't in reward_currencies (e.g. LLM-hallucinated
+  // "miles_generic") landed a rule with reward_currency_id=NULL. The
+  // calculator loader then fallbacked to 1.0 HKD/mile → ~10× reward
+  // inflation. Now the materializer must refuse instead.
+  it("skips points_per_hkd groups whose currencySlug isn't in reward_currencies (D19)", async () => {
+    // Find any eligible group in the live corpus with an off-taxonomy
+    // currency slug. P9.5 seeded a few of these (miles_generic × 1,
+    // avios × 2, membership_rewards × 1). If they've all been cleaned
+    // up by adding the currencies to YAML or reclassifying in review,
+    // this test becomes stale — refuse silently so someone updates it.
+    const badGroup = (
+      await db
+        .select({ id: crossCheckGroups.id })
+        .from(crossCheckGroups)
+        .where(
+          and(
+            eq(crossCheckGroups.claimType, "earn_rate"),
+            isNull(crossCheckGroups.approvedRuleId),
+            inArray(crossCheckGroups.status, ["agreed", "single_source"]),
+            sql`canonical_payload->>'rewardFormulaType' = 'points_per_hkd'`,
+            sql`canonical_payload->>'currencySlug' IS NOT NULL`,
+            sql`canonical_payload->>'currencySlug' NOT IN (SELECT slug FROM reward_currencies)`,
+          ),
+        )
+        .limit(1)
+    )[0]
+    expect(
+      badGroup,
+      "Expected at least one off-taxonomy-currency group in the live corpus for D19 coverage. If all such groups have been cleaned up, delete this test or synthesize one.",
+    ).toBeDefined()
+    const outcome = await materializeGroup(badGroup!.id)
+    expect(outcome.kind).toBe("skipped")
+    if (outcome.kind !== "skipped") return
+    expect(outcome.reason).toMatch(/not in reward_currencies/)
   })
 })
 

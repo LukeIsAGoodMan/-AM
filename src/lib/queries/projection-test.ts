@@ -148,6 +148,12 @@ type Row = {
 function mapRow(row: Row): ResolvedRule {
   const r = row.r
   const formula = RewardFormulaSchema.parse(r.rewardFormulaPayload)
+  // D19 fail-loud: mirrored from queries/resolved-rules.ts.
+  if (formula.type === "points_per_hkd" && row.currencyValueHkd === null) {
+    throw new Error(
+      `Rule '${r.slug}' is points_per_hkd but reward_currency_id is NULL. See D19.`,
+    )
+  }
   const cap: ResolvedCap | null =
     r.capBasis !== null
       ? {

@@ -5,6 +5,9 @@
 //
 // Use: pnpm diagnose
 
+import { and, eq, isNull } from "drizzle-orm"
+import { db } from "@/db/client"
+import { cards as cardsTable, rewardRules } from "@/db/schema/catalog"
 import { loadResolvedRulesForAllActiveCards } from "@/lib/queries/resolved-rules"
 import { calculate } from "@/lib/calculator/calculate"
 import { HardcodedMerchantResolver } from "@/lib/resolver/hardcoded"
@@ -24,6 +27,7 @@ type Scenario = {
 }
 
 async function main() {
+  await checkOrphanCurrencyRules()
   const cards = await loadResolvedRulesForAllActiveCards()
   console.log(`Loaded ${cards.length} active cards from DB.\n`)
 
@@ -227,6 +231,44 @@ async function main() {
     console.log(`✗ ${regressions} regression(s) detected.`)
     process.exit(1)
   }
+}
+
+// D19: catch approved points_per_hkd rules with a NULL reward_currency_id
+// before the calculator does. The rule-loader now throws on this shape
+// (fail-loud replaces the old 1.0-HKD/mile fallback), but flagging it here
+// gives a clearer message and prevents diagnose from partially completing.
+async function checkOrphanCurrencyRules() {
+  const orphans = await db
+    .select({
+      cardSlug: cardsTable.slug,
+      ruleSlug: rewardRules.slug,
+      payload: rewardRules.rewardFormulaPayload,
+    })
+    .from(rewardRules)
+    .innerJoin(cardsTable, eq(rewardRules.cardId, cardsTable.id))
+    .where(
+      and(
+        eq(rewardRules.status, "approved"),
+        eq(rewardRules.rewardFormulaType, "points_per_hkd"),
+        isNull(rewardRules.rewardCurrencyId),
+      ),
+    )
+  if (orphans.length === 0) return
+  console.error(
+    `✗ ${orphans.length} approved points_per_hkd rule(s) have NULL reward_currency_id (D19):`,
+  )
+  for (const r of orphans) {
+    console.error(
+      `  · ${r.cardSlug} :: ${r.ruleSlug} — payload=${JSON.stringify(r.payload)}`,
+    )
+  }
+  console.error(
+    "\n  These would inflate rewards ~10× if loaded. Fix by adding the currency",
+  )
+  console.error(
+    "  slug to reward_currencies (YAML) or reopening + reclassifying in /review.",
+  )
+  process.exit(1)
 }
 
 async function resolveTxn(

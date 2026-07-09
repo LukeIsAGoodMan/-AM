@@ -245,21 +245,21 @@ async function materializeOneInternal(
   }
 
   // Resolve foreign keys for category + currency (string slug → uuid id).
-  // payload.categorySlug / rewardCurrencySlug come from the P2 extractor
-  // prompt's canonical taxonomy; if the model emitted an off-taxonomy slug
-  // the lookup returns null and the rule lands without that FK (calculator
-  // will read this as "no category restriction" — same as a hand-curated
-  // base_earn rule).
+  // payload.categorySlug / currencySlug come from the P2 extractor prompt's
+  // canonical taxonomy AND match the RewardFormulaSchema keys used in
+  // reward_formula_payload. Category-miss is tolerable (rule lands without
+  // the FK; calculator reads it as "no category restriction"). Currency-miss
+  // is NOT — see the fail-fast guard below (D19).
   const categoryId = await lookupCategoryId(
     typeof payload["categorySlug"] === "string"
       ? (payload["categorySlug"] as string)
       : null,
   )
-  const currencyId = await lookupCurrencyId(
-    typeof payload["rewardCurrencySlug"] === "string"
-      ? (payload["rewardCurrencySlug"] as string)
-      : null,
-  )
+  const currencySlugInPayload =
+    typeof payload["currencySlug"] === "string"
+      ? (payload["currencySlug"] as string)
+      : null
+  const currencyId = await lookupCurrencyId(currencySlugInPayload)
 
   // For earn_rate, opportunistically stitch in any approved cap group on
   // the same dimension. Exclusion claims don't have caps.
@@ -283,22 +283,24 @@ async function materializeOneInternal(
 
   // Strip fields that live on the rule's flattened columns rather than
   // inside reward_formula_payload; the calculator reads them from columns.
-  // Pass the card-level currency lookup as a fallback for points_per_hkd
-  // claims that didn't carry currencySlug inline.
-  const fallbackCurrencySlug =
-    typeof payload["rewardCurrencySlug"] === "string"
-      ? (payload["rewardCurrencySlug"] as string)
-      : null
-  const formulaPayload = pickFormulaPayload(
-    rewardFormulaType,
-    payload,
-    fallbackCurrencySlug,
-  )
+  const formulaPayload = pickFormulaPayload(rewardFormulaType, payload)
   if (!formulaPayload) {
     return {
       kind: "skipped",
       groupId: group.id,
       reason: `payload missing required fields for reward_formula_type '${rewardFormulaType}'`,
+    }
+  }
+
+  // D19: currency FK is load-bearing for points_per_hkd. Calculator's
+  // rule loader fallbacks a NULL reward_currency_id to hkd_cashback + 1.0
+  // HKD/mile — a miles rule with NULL currency inflates rewards ~10×.
+  // Refuse; the review queue can add the currency to YAML or reclassify.
+  if (rewardFormulaType === "points_per_hkd" && !currencyId) {
+    return {
+      kind: "skipped",
+      groupId: group.id,
+      reason: `currencySlug '${currencySlugInPayload ?? "(missing)"}' not in reward_currencies`,
     }
   }
 
@@ -494,15 +496,12 @@ function pickStringArray(
 // IMPORTANT: each formula type's required fields per Zod schema —
 // simple_percent { rate }, points_per_hkd { points, perHkd, currencySlug },
 // no_reward {}. Missing required fields will break the calculator at
-// rule-load time (RewardFormulaSchema.parse throws). When the extractor
-// doesn't emit `currencySlug` for a points_per_hkd claim, we fall back
-// to a sensible card-level default; if even that's unavailable, the
-// materializer returns null and the caller skips the group rather than
-// inserting a partial rule that would 500 the /rules page.
+// rule-load time (RewardFormulaSchema.parse throws) — refuse here instead
+// so a partial rule doesn't 500 the /rules page. Currency-FK validation
+// happens in the caller (D19); this just guards the payload shape.
 function pickFormulaPayload(
   rewardFormulaType: string,
   src: Record<string, unknown>,
-  fallbackCurrencySlug: string | null,
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { type: rewardFormulaType }
   if (rewardFormulaType === "simple_percent") {
@@ -521,12 +520,8 @@ function pickFormulaPayload(
     if (src["perHkd"] <= 0) return null
     out["points"] = src["points"]
     out["perHkd"] = src["perHkd"]
-    const currency =
-      typeof src["currencySlug"] === "string"
-        ? (src["currencySlug"] as string)
-        : fallbackCurrencySlug
-    if (!currency) return null
-    out["currencySlug"] = currency
+    if (typeof src["currencySlug"] !== "string") return null
+    out["currencySlug"] = src["currencySlug"]
   } else if (rewardFormulaType === "no_reward") {
     // Exclusion rules — payload is just { type:'no_reward' }. Calculator
     // skips reward computation; appliesTo on the flat column controls
