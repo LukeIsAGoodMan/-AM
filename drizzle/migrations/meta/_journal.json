@@ -92,6 +92,13 @@
       "when": 1783641600000,
       "tag": "0012_cap_usage_key",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783728000000,
+      "tag": "0013_caps_jsonb",
+      "breakpoints": true
     }
   ]
 }

@@ -25,7 +25,7 @@ const baseRule = (
   requiresSelectedCategory: false,
   campaignId: null,
   accrualKey: overrides.ruleId,
-  cap: null,
+  caps: [],
   appliesTo: null,
   stackingPolicy: "additive",
   exclusiveGroup: null,

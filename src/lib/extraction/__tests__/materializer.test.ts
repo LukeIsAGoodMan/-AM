@@ -285,40 +285,28 @@ describe("P7 materializer — single-group entry point", () => {
     expect(outcome.reason).toMatch(/dedup against yaml rule/)
   })
 
-  // D21 (P15) — fan-out stitching: a cap group with
-  // key_dimension='applies_to=X,Y,Z' should attach to every earn_rate
-  // rule whose category ∈ {X, Y, Z} with a SHARED capUsageKey so the
-  // calculator's accrual bucket is shared across all fanned-out rules.
-  it("live corpus has fan-out or card-level cap stitches with shared xcap: usageKey (D21)", async () => {
-    // Read-only invariant: at least one xchk__ approved rule in the corpus
-    // was materialized from a shared cap group and therefore carries an
-    // xcap:-prefixed capUsageKey. Non-null capUsageKey is the signal that
-    // multiple rules share one accrual bucket (fan-out or card-level path
-    // in loadMatchingCap). Single-rule caps leave the column null and the
-    // mapRow layer falls back to rule.slug.
-    const shared = await db
-      .select({
-        ruleSlug: rewardRules.slug,
-        capUsageKey: rewardRules.capUsageKey,
-        capBasis: rewardRules.capBasis,
-      })
+  // D21 (P15) + D23 (P17) — fan-out stitching + multi-cap: at least one
+  // xchk__ approved rule in the corpus should carry a caps[] entry whose
+  // usageKey has the xcap: prefix (shared bucket via applies_to fan-out
+  // or card-level cap). Single-rule caps use the rule slug as usageKey.
+  it("live corpus has shared xcap: usageKey in caps[] (D21/D23)", async () => {
+    const rows = await db
+      .select({ slug: rewardRules.slug, caps: rewardRules.caps })
       .from(rewardRules)
-      .where(
-        and(
-          eq(rewardRules.status, "approved"),
-          sql`slug LIKE 'xchk__%'`,
-          sql`cap_usage_key IS NOT NULL`,
-        ),
-      )
-    expect(
-      shared.length,
-      "Expected xchk__ rules with a shared xcap: capUsageKey (P15 fan-out or card-level cap). If corpus was reset, run pnpm p7:materialize first.",
-    ).toBeGreaterThan(0)
-    // Every shared bucket uses the xcap: prefix and has a cap_basis set.
-    for (const r of shared) {
-      expect(r.capUsageKey!.startsWith("xcap:")).toBe(true)
-      expect(r.capBasis).not.toBeNull()
+      .where(and(eq(rewardRules.status, "approved"), sql`slug LIKE 'xchk__%'`))
+    let sharedCount = 0
+    for (const r of rows) {
+      if (!Array.isArray(r.caps)) continue
+      for (const c of r.caps as Array<Record<string, unknown>>) {
+        if (typeof c["usageKey"] === "string" && c["usageKey"].startsWith("xcap:")) {
+          sharedCount++
+        }
+      }
     }
+    expect(
+      sharedCount,
+      "Expected xchk__ rules with at least one xcap:-prefixed cap in caps[] (P15/P17 shared-bucket path). If corpus was reset, run pnpm p7:materialize first.",
+    ).toBeGreaterThan(0)
   })
 })
 

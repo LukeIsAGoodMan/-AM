@@ -7,10 +7,10 @@ import {
   rewardRules,
 } from "@/db/schema/catalog"
 import { RewardFormulaSchema } from "@/lib/schemas/formula"
-import type {
-  ResolvedRule,
-  ResolvedCap,
-  StackingPolicy,
+import {
+  parseCapsJson,
+  type ResolvedRule,
+  type StackingPolicy,
 } from "@/lib/calculator/resolved-rule"
 
 // Maps approved reward_rules rows for a card into the ResolvedRule shape
@@ -119,21 +119,10 @@ function mapRow(row: Row): ResolvedRule {
     )
   }
 
-  const cap: ResolvedCap | null =
-    r.capBasis !== null
-      ? {
-          // P15 (D21): capUsageKey is set when the cap is shared across
-          // multiple rules (applies_to fan-out or card-level cap). Falling
-          // back to slug preserves the single-rule accrual behaviour.
-          usageKey: r.capUsageKey ?? r.slug,
-          basis: r.capBasis as ResolvedCap["basis"],
-          period:
-            (r.capPeriod as ResolvedCap["period"]) ?? "transaction",
-          amountHkd: r.capAmountHkd !== null ? Number(r.capAmountHkd) : null,
-          rewardAmount:
-            r.capRewardAmount !== null ? Number(r.capRewardAmount) : null,
-        }
-      : null
+  // P17 (D23): caps is a jsonb array — a rule may carry N concurrent caps
+  // (category-specific + card-wide is the common pair). parseCapsJson
+  // validates shape and drops malformed entries.
+  const caps = parseCapsJson(r.caps, r.slug)
 
   return {
     ruleId: r.slug,
@@ -154,7 +143,7 @@ function mapRow(row: Row): ResolvedRule {
     requiresSelectedCategory: r.requiresSelectedCategory,
     campaignId: r.campaignId,
     accrualKey: r.slug,
-    cap,
+    caps,
     appliesTo: r.appliesTo,
     stackingPolicy: r.stackingPolicy as StackingPolicy,
     exclusiveGroup: r.exclusiveGroup,

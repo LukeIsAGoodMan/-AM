@@ -34,9 +34,15 @@ export type RuleListRow = {
   isForeignCurrency: boolean | null
   requiresActivation: boolean
   requiresRegistration: boolean
+  // P17 (D23): caps live in the caps jsonb array. For backward-compat with
+  // the /rules table + admin edit form, these three fields expose the
+  // FIRST cap's shape (or nulls if no cap). Multi-cap rules render the
+  // primary in the table; the detail page can show the full list.
   capAmountHkd: string | null
+  capRewardAmount: string | null
   capPeriod: string | null
   capBasis: string | null
+  caps: unknown
   appliesTo: string[] | null
   stackingPolicy: string
   exclusiveGroup: string | null
@@ -69,9 +75,7 @@ export async function listRules(): Promise<RuleListRow[]> {
       isForeignCurrency: rewardRules.isForeignCurrency,
       requiresActivation: rewardRules.requiresActivation,
       requiresRegistration: rewardRules.requiresRegistration,
-      capAmountHkd: rewardRules.capAmountHkd,
-      capPeriod: rewardRules.capPeriod,
-      capBasis: rewardRules.capBasis,
+      caps: rewardRules.caps,
       appliesTo: rewardRules.appliesTo,
       stackingPolicy: rewardRules.stackingPolicy,
       exclusiveGroup: rewardRules.exclusiveGroup,
@@ -100,7 +104,34 @@ export async function listRules(): Promise<RuleListRow[]> {
       rewardRules.slug,
     )
 
-  return rows
+  // P17 (D23): derive the flat cap fields from caps[0] for UI backward-
+  // compat. Multi-cap rules only surface the primary in the list; the
+  // detail page reads `caps` directly if it wants to show all.
+  return rows.map((r) => {
+    const first =
+      Array.isArray(r.caps) && r.caps.length > 0
+        ? (r.caps[0] as Record<string, unknown>)
+        : null
+    return {
+      ...r,
+      capAmountHkd:
+        first && typeof first["amountHkd"] === "number"
+          ? String(first["amountHkd"])
+          : first && typeof first["amountHkd"] === "string"
+            ? (first["amountHkd"] as string)
+            : null,
+      capRewardAmount:
+        first && typeof first["rewardAmount"] === "number"
+          ? String(first["rewardAmount"])
+          : first && typeof first["rewardAmount"] === "string"
+            ? (first["rewardAmount"] as string)
+            : null,
+      capPeriod:
+        first && typeof first["period"] === "string" ? first["period"] : null,
+      capBasis:
+        first && typeof first["basis"] === "string" ? first["basis"] : null,
+    }
+  })
 }
 
 export type RuleProvenanceClaim = {
@@ -137,8 +168,17 @@ export type RuleProvenance = {
   supportingClaims: RuleProvenanceClaim[]
 }
 
+// P17 (D23): admin UI pages read the legacy per-column cap fields.
+// getRuleDetail derives them from caps[0] for backward compat.
+export type RuleWithCapCompat = typeof rewardRules.$inferSelect & {
+  capAmountHkd: string | null
+  capRewardAmount: string | null
+  capPeriod: string | null
+  capBasis: string | null
+}
+
 export type RuleDetail = {
-  rule: typeof rewardRules.$inferSelect
+  rule: RuleWithCapCompat
   card: typeof cards.$inferSelect
   issuer: typeof issuers.$inferSelect
   category: typeof categories.$inferSelect | null
@@ -182,8 +222,36 @@ export async function getRuleDetail(slug: string): Promise<RuleDetail | null> {
     loadProvenance(row.reward_rules.id),
   ])
 
+  const firstCap =
+    Array.isArray(row.reward_rules.caps) && row.reward_rules.caps.length > 0
+      ? (row.reward_rules.caps[0] as Record<string, unknown>)
+      : null
+  const ruleWithCapCompat: RuleWithCapCompat = {
+    ...row.reward_rules,
+    capAmountHkd:
+      firstCap && typeof firstCap["amountHkd"] === "number"
+        ? String(firstCap["amountHkd"])
+        : firstCap && typeof firstCap["amountHkd"] === "string"
+          ? (firstCap["amountHkd"] as string)
+          : null,
+    capRewardAmount:
+      firstCap && typeof firstCap["rewardAmount"] === "number"
+        ? String(firstCap["rewardAmount"])
+        : firstCap && typeof firstCap["rewardAmount"] === "string"
+          ? (firstCap["rewardAmount"] as string)
+          : null,
+    capPeriod:
+      firstCap && typeof firstCap["period"] === "string"
+        ? firstCap["period"]
+        : null,
+    capBasis:
+      firstCap && typeof firstCap["basis"] === "string"
+        ? firstCap["basis"]
+        : null,
+  }
+
   return {
-    rule: row.reward_rules,
+    rule: ruleWithCapCompat,
     card: row.cards,
     issuer: row.issuers,
     category: row.categories,

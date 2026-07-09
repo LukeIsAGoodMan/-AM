@@ -45,8 +45,11 @@ export type ResolvedRule = {
   // M4 grouped tiers may share a key across rules.
   accrualKey: string
 
-  // M2: single-rule cap.
-  cap: ResolvedCap | null
+  // P17 (D23): rule can carry N concurrent caps (category-specific +
+  // card-wide is the common pair). All caps must be respected — the
+  // calculator applies each and takes the tightest binding constraint.
+  // Empty array = no cap on this rule.
+  caps: ResolvedCap[]
 
   // M4: exclusion + stacking (PRD §8.2 steps 4–5).
   // - appliesTo: for ruleType='exclusion', the rule_types this exclusion
@@ -69,6 +72,41 @@ export type ResolvedCap = {
   period: "transaction" | "day" | "month" | "quarter" | "year" | "campaign"
   amountHkd: number | null
   rewardAmount: number | null
+}
+
+// P17 (D23): parse the `caps` jsonb column shape into ResolvedCap[].
+// Migration 0013 backfills existing rows with the shape:
+//   [{ usageKey, basis, period, amountHkd?, rewardAmount? }, ...]
+// Returns [] for empty / malformed input rather than throwing, but
+// individual cap entries with missing basis/period drop silently —
+// they'd be no-ops in the calculator anyway.
+export function parseCapsJson(raw: unknown, ruleSlug: string): ResolvedCap[] {
+  if (!Array.isArray(raw)) return []
+  const out: ResolvedCap[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue
+    const e = entry as Record<string, unknown>
+    if (typeof e["basis"] !== "string") continue
+    if (typeof e["period"] !== "string") continue
+    out.push({
+      usageKey: typeof e["usageKey"] === "string" ? e["usageKey"] : ruleSlug,
+      basis: e["basis"] as ResolvedCap["basis"],
+      period: e["period"] as ResolvedCap["period"],
+      amountHkd:
+        typeof e["amountHkd"] === "number"
+          ? e["amountHkd"]
+          : typeof e["amountHkd"] === "string"
+            ? Number(e["amountHkd"])
+            : null,
+      rewardAmount:
+        typeof e["rewardAmount"] === "number"
+          ? e["rewardAmount"]
+          : typeof e["rewardAmount"] === "string"
+            ? Number(e["rewardAmount"])
+            : null,
+    })
+  }
+  return out
 }
 
 // One survivor of matches+exclusion+formula computation. Stacking operates on these.

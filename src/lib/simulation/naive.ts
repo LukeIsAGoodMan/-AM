@@ -52,14 +52,16 @@ export class NaiveSimulationEngine implements SimulationEngine {
       const dateIso = date.toISOString().slice(0, 10)
 
       // Step 1: reset any cap keys whose period has rolled over.
+      // P17 (D23): each rule can carry multiple caps; iterate all.
       for (const rule of input.rules) {
-        if (rule.cap?.basis !== "spending" || rule.cap.amountHkd === null)
-          continue
-        const token = periodToken(rule.cap.period, date)
-        const prev = lastPeriodToken.get(rule.cap.usageKey)
-        if (prev !== token) {
-          capUsage[rule.cap.usageKey] = 0
-          lastPeriodToken.set(rule.cap.usageKey, token)
+        for (const cap of rule.caps) {
+          if (cap.basis !== "spending" || cap.amountHkd === null) continue
+          const token = periodToken(cap.period, date)
+          const prev = lastPeriodToken.get(cap.usageKey)
+          if (prev !== token) {
+            capUsage[cap.usageKey] = 0
+            lastPeriodToken.set(cap.usageKey, token)
+          }
         }
       }
       // Same for tiered accrual keys (they reset based on the formula's
@@ -100,9 +102,11 @@ export class NaiveSimulationEngine implements SimulationEngine {
         for (const rule of input.rules) {
           if (rule.status !== "approved") continue
           if (!ruleMatchesForCap(rule, txn)) continue
-          if (rule.cap?.basis === "spending" && rule.cap.amountHkd !== null) {
-            capUsage[rule.cap.usageKey] =
-              (capUsage[rule.cap.usageKey] ?? 0) + txn.amountHkd
+          for (const cap of rule.caps) {
+            if (cap.basis === "spending" && cap.amountHkd !== null) {
+              capUsage[cap.usageKey] =
+                (capUsage[cap.usageKey] ?? 0) + txn.amountHkd
+            }
           }
           if (accrualPeriodOf(rule) !== null) {
             capUsage[rule.accrualKey] =
@@ -122,7 +126,7 @@ export class NaiveSimulationEngine implements SimulationEngine {
     const total = round2(totalOngoing + welcomeContribution)
 
     const caveats: string[] = []
-    if (input.rules.some((r) => r.cap !== null)) {
+    if (input.rules.some((r) => r.caps.length > 0)) {
       caveats.push(
         "Cap tracking is conservative — actual rewards may be slightly higher.",
       )

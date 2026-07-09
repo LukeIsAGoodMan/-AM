@@ -1,20 +1,23 @@
 import type { TransactionContext } from "@/lib/schemas/transaction"
-import type { ResolvedRule } from "./resolved-rule"
+import type { ResolvedCap, ResolvedRule } from "./resolved-rule"
 import { applyFormula } from "./apply-formula"
 
-// PRD §8.2 step 6 (single-rule subset) + accrual feed for tiered formulas.
+// PRD §8.2 step 6 + accrual feed for tiered formulas.
 //
-// Two responsibilities here:
-//   1. Hard cap: if rule.cap is set with basis='spending' and amountHkd,
-//      limit eligible spend to what's left under the cap.
-//   2. Accrual passthrough: tiered formulas need to know how much has
-//      already been accumulated in the current period under rule.accrualKey.
+// P17 (D23): rule.caps is an array. Every cap on the rule must be
+// respected — for spending caps, the tightest remaining budget wins; for
+// reward caps, the tightest remaining reward budget wins. When mixed,
+// spending caps constrain eligible spend BEFORE applyFormula runs;
+// reward caps clip the resulting reward AFTER.
 
 export type CapUsage = Record<string, number>
 
 type ApplyResult = {
   rewardUnits: number
   eligibleSpendHkd: number
+  // Kept for backward compat with M6 caveats + explainer output.
+  // Reflects the tightest spending-cap remaining (or the tightest
+  // reward-cap remaining if no spending caps apply). null if no caps.
   capRemainingAfter: number | null
 }
 
@@ -26,54 +29,74 @@ export function applyRuleWithCap(
   const accrualUsedHkd = capUsage[rule.accrualKey] ?? 0
 
   let eligibleSpend = txn.amountHkd
-  let capRemainingAfter: number | null = null
+  let tightestSpendingRemaining: number | null = null
 
-  if (rule.cap !== null) {
-    switch (rule.cap.basis) {
-      case "spending": {
-        if (rule.cap.amountHkd === null) break
-        const used = capUsage[rule.cap.usageKey] ?? 0
-        const remaining = Math.max(0, rule.cap.amountHkd - used)
-        if (remaining === 0) {
-          return { rewardUnits: 0, eligibleSpendHkd: 0, capRemainingAfter: 0 }
-        }
-        eligibleSpend = Math.min(eligibleSpend, remaining)
-        capRemainingAfter = remaining - eligibleSpend
-        break
-      }
-      case "reward": {
-        // P15 (D21): reward-basis cap limits total reward units accrued in
-        // the period, denominated in the same units as applyFormula returns
-        // (HKD for simple_percent, miles/points for points_per_hkd). Compute
-        // the pre-cap reward, then trim it at the remaining budget.
-        if (rule.cap.rewardAmount === null) break
-        const rewardPre = applyFormula(
-          rule.formula,
-          { ...txn, amountHkd: eligibleSpend },
-          accrualUsedHkd,
-        )
-        const used = capUsage[rule.cap.usageKey] ?? 0
-        const remaining = Math.max(0, rule.cap.rewardAmount - used)
-        const rewardCapped = Math.min(rewardPre, remaining)
-        return {
-          rewardUnits: rewardCapped,
-          eligibleSpendHkd: eligibleSpend,
-          capRemainingAfter: remaining - rewardCapped,
-        }
-      }
-      case "transaction_count":
-        // Not used by any live rule. Wire when an adversarial card needs it.
-        throw new Error(
-          `cap.basis=${rule.cap.basis} not implemented yet`,
-        )
+  // Pass 1: apply every spending-basis cap. Each shrinks the eligible spend.
+  for (const cap of rule.caps) {
+    if (cap.basis !== "spending") continue
+    if (cap.amountHkd === null) continue
+    const used = capUsage[cap.usageKey] ?? 0
+    const remaining = Math.max(0, cap.amountHkd - used)
+    if (remaining === 0) {
+      // Any spending cap fully consumed → zero reward from this rule.
+      return { rewardUnits: 0, eligibleSpendHkd: 0, capRemainingAfter: 0 }
+    }
+    if (remaining < eligibleSpend) eligibleSpend = remaining
+    if (tightestSpendingRemaining === null || remaining < tightestSpendingRemaining) {
+      tightestSpendingRemaining = remaining
     }
   }
 
-  const rewardUnits = applyFormula(
+  // Compute reward with the (possibly clipped) eligible spend.
+  let rewardUnits = applyFormula(
     rule.formula,
     { ...txn, amountHkd: eligibleSpend },
     accrualUsedHkd,
   )
 
+  // Pass 2: apply every reward-basis cap. Each caps total reward this txn.
+  let tightestRewardRemaining: number | null = null
+  for (const cap of rule.caps) {
+    if (cap.basis !== "reward") continue
+    if (cap.rewardAmount === null) continue
+    const used = capUsage[cap.usageKey] ?? 0
+    const remaining = Math.max(0, cap.rewardAmount - used)
+    if (remaining === 0) {
+      return { rewardUnits: 0, eligibleSpendHkd: eligibleSpend, capRemainingAfter: 0 }
+    }
+    if (remaining < rewardUnits) rewardUnits = remaining
+    if (tightestRewardRemaining === null || remaining < tightestRewardRemaining) {
+      tightestRewardRemaining = remaining
+    }
+  }
+
+  // transaction_count-basis is unused; refuse rather than silently ignore.
+  for (const cap of rule.caps) {
+    if (cap.basis === "transaction_count") {
+      throw new Error(`cap.basis=${cap.basis} not implemented yet`)
+    }
+  }
+
+  // Reporting priority: spending-cap remaining (existing UI expectation)
+  // then reward-cap remaining, else null. Keeps M6 caveats stable.
+  const capRemainingAfter =
+    tightestSpendingRemaining !== null
+      ? Math.max(0, tightestSpendingRemaining - eligibleSpend)
+      : tightestRewardRemaining !== null
+        ? Math.max(0, tightestRewardRemaining - rewardUnits)
+        : null
+
   return { rewardUnits, eligibleSpendHkd: eligibleSpend, capRemainingAfter }
+}
+
+// Convenience: pick the "primary" cap for legacy per-rule display (M6
+// caveats, /rules provenance card). Returns the first spending cap, or
+// the first reward cap, or null. Callers that need all caps read
+// `rule.caps` directly.
+export function primaryCap(caps: ResolvedCap[]): ResolvedCap | null {
+  const spending = caps.find((c) => c.basis === "spending")
+  if (spending) return spending
+  const reward = caps.find((c) => c.basis === "reward")
+  if (reward) return reward
+  return caps[0] ?? null
 }

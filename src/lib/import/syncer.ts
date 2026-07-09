@@ -59,10 +59,7 @@ const ECONOMIC_RULE_FIELDS = [
   "requiresActivation",
   "requiresRegistration",
   "requiresSelectedCategory",
-  "capAmountHkd",
-  "capRewardAmount",
-  "capPeriod",
-  "capBasis",
+  "caps",
   "appliesTo",
   "stackingPolicy",
   "exclusiveGroup",
@@ -525,10 +522,21 @@ async function syncRule(
     requiresRegistration: yamlRule.requiresRegistration,
     requiresSelectedCategory: yamlRule.requiresSelectedCategory,
     campaignId,
-    capAmountHkd: yamlRule.cap?.amountHkd?.toString(),
-    capRewardAmount: yamlRule.cap?.rewardAmount?.toString(),
-    capPeriod: yamlRule.cap?.period,
-    capBasis: yamlRule.cap?.basis,
+    // P17 (D23): YAML still declares a single `cap:` object. Persist it
+    // as a one-element caps[] jsonb. Multi-cap YAML rules are not modelled
+    // yet — curators can extend when needed. For xchk__ rules the
+    // materializer writes N caps directly.
+    caps: yamlRule.cap
+      ? [
+          {
+            usageKey: yamlRule.slug,
+            basis: yamlRule.cap.basis,
+            period: yamlRule.cap.period,
+            amountHkd: yamlRule.cap.amountHkd ?? null,
+            rewardAmount: yamlRule.cap.rewardAmount ?? null,
+          },
+        ]
+      : [],
     appliesTo: yamlRule.appliesTo,
     stackingPolicy: yamlRule.stackingPolicy,
     exclusiveGroup: yamlRule.exclusiveGroup,
@@ -556,10 +564,7 @@ async function syncRule(
   // Build the "would-be" comparable row and compare economic fields.
   const wouldBe: Partial<RewardRule> = {
     ...insertValues,
-    capAmountHkd: insertValues.capAmountHkd ?? null,
-    capRewardAmount: insertValues.capRewardAmount ?? null,
-    capPeriod: insertValues.capPeriod ?? null,
-    capBasis: insertValues.capBasis ?? null,
+    caps: insertValues.caps ?? [],
     appliesTo: insertValues.appliesTo ?? null,
     exclusiveGroup: insertValues.exclusiveGroup ?? null,
     effectiveStart: insertValues.effectiveStart ?? null,

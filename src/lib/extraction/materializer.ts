@@ -261,11 +261,12 @@ async function materializeOneInternal(
       : null
   const currencyId = await lookupCurrencyId(currencySlugInPayload)
 
-  // For earn_rate, opportunistically stitch in any approved cap group on
-  // the same dimension. Exclusion claims don't have caps.
-  const cap = group.claimType === "earn_rate"
-    ? await loadMatchingCap(group.cardId, group.keyDimension)
-    : null
+  // For earn_rate, opportunistically stitch caps: primary (category exact
+  // or applies_to fan-out) + card-level secondary if the card has one.
+  // Exclusion claims don't have caps.
+  const caps = group.claimType === "earn_rate"
+    ? await loadMatchingCaps(group.cardId, group.keyDimension)
+    : []
 
   const ruleType = deriveRuleType(group.claimType, payload)
 
@@ -352,11 +353,13 @@ async function materializeOneInternal(
         isOverseas: pickBool(payload, "isOverseas"),
         isForeignCurrency: pickBool(payload, "isForeignCurrency"),
         appliesTo: pickStringArray(payload, "appliesTo"),
-        capAmountHkd: cap?.amountHkd ?? null,
-        capRewardAmount: cap?.rewardAmount ?? null,
-        capPeriod: cap?.period ?? null,
-        capBasis: cap?.basis ?? null,
-        capUsageKey: cap?.usageKey ?? null,
+        caps: caps.map((c) => ({
+          usageKey: c.usageKey ?? ruleSlug,
+          basis: c.basis,
+          period: c.period ?? "transaction",
+          amountHkd: c.amountHkd,
+          rewardAmount: c.rewardAmount,
+        })),
         confidenceScore: Number(group.aggregateConfidence).toFixed(3),
         sourceId: primary.sourceId,
         notes: `Materialized from cross_check_group ${group.id} (verdict=${group.status}, ${supports.length} supporting source${supports.length === 1 ? "" : "s"}).`,
@@ -400,7 +403,7 @@ async function materializeOneInternal(
     ruleId,
     ruleSlug,
     ruleType,
-    capStitched: cap !== null,
+    capStitched: caps.length > 0,
     supportingSourceCount: new Set(supports.map((s) => s.sourceId)).size,
   }
 }
@@ -594,24 +597,22 @@ function capFieldsFromGroup(
   }
 }
 
-async function loadMatchingCap(
+async function loadMatchingCaps(
   cardId: string,
   earnRateKeyDimension: string,
-): Promise<CapShape | null> {
-  // P15 match order — first hit wins:
-  //   (1) Exact category_slug=X match → per-rule cap, usageKey stays NULL.
-  //   (2) applies_to=X,Y,... where the rule's category ∈ set → fan-out.
-  //       Multiple earn_rate rules materialized from that cap group SHARE
-  //       one usageKey so the calculator's accrual bucket is shared.
-  //   (3) Card-level (cap_default=*_card_level) → same idea, one bucket
-  //       per (card, cap_group). Only stitched when no more-specific cap
-  //       exists — a category-specific cap always wins over a card-wide
-  //       one on the same rule.
-  // Only approvable statuses are eligible — D16 says a conflict cap is
-  // not safe to apply automatically (the reviewer picks canonical first).
+): Promise<CapShape[]> {
+  // P17 (D23): a rule can now carry multiple caps concurrently. Semantics:
+  //   (a) PRIMARY cap = first hit of (exact category_slug=X match →
+  //       applies_to=X,Y,... fan-out). At most one primary per rule.
+  //   (b) SECONDARY cap = card-level cap (cap_default=*_card_level), if
+  //       one exists on the card. Applies IN ADDITION to any primary.
+  // A base_earn rule with no category still picks up the card-level cap
+  // (as its sole cap). Only approvable status caps are eligible —
+  // D16 keeps conflict caps out of auto-stitch.
   const eligible = inArray(crossCheckGroups.status, ["agreed", "single_source"])
+  const results: CapShape[] = []
 
-  // (1) Exact match.
+  // (1) Exact match — per-rule usageKey (stays null, mapRow falls back to slug).
   const exact = (
     await db
       .select()
@@ -626,22 +627,20 @@ async function loadMatchingCap(
       )
       .limit(1)
   )[0]
+  let primaryLanded = false
   if (exact) {
     const fields = capFieldsFromGroup(exact)
-    if (fields) return { ...fields, usageKey: null }
+    if (fields) {
+      results.push({ ...fields, usageKey: null })
+      primaryLanded = true
+    }
   }
 
-  // Both fan-out and card-level need the earn_rate rule's category. If
-  // the dimension isn't `category_slug=X` (e.g. rule_type=base_earn),
-  // neither can apply.
+  // (2) applies_to fan-out — only if no exact match. Shared xcap:id.
   const categoryFromDim = earnRateKeyDimension.startsWith("category_slug=")
     ? earnRateKeyDimension.slice("category_slug=".length)
     : null
-
-  // (2) Fan-out via applies_to. Load all applies_to=... cap groups on the
-  // card, then match by category membership (Postgres `LIKE` can't easily
-  // check "X ∈ comma-sorted list", but the sets are small — <10 rows).
-  if (categoryFromDim) {
+  if (!primaryLanded && categoryFromDim) {
     const fanoutCandidates = await db
       .select()
       .from(crossCheckGroups)
@@ -654,21 +653,22 @@ async function loadMatchingCap(
         ),
       )
     const fanoutHit = fanoutCandidates.find((g) => {
-      // key_dimension format: "applies_to=X,Y,Z" — split on '=' then ','
       const rhs = g.keyDimension.slice("applies_to=".length)
       const parts = rhs.split(",").map((s) => s.trim())
       return parts.includes(categoryFromDim)
     })
     if (fanoutHit) {
       const fields = capFieldsFromGroup(fanoutHit)
-      if (fields) return { ...fields, usageKey: `xcap:${fanoutHit.id}` }
+      if (fields) {
+        results.push({ ...fields, usageKey: `xcap:${fanoutHit.id}` })
+        primaryLanded = true
+      }
     }
   }
 
-  // (3) Card-level fallback. `cap_default=<period>_<basis>_card_level`
-  // groups apply to the card as a whole (aggregate cap across bonuses).
-  // If a rule has no more-specific cap, stitch a card-level one so the
-  // calculator at least respects the outer bound.
+  // (3) Card-level cap — ALWAYS applies on top of any primary (or as
+  // the sole cap when no primary match). Real T&C shape: category-
+  // specific cap + separate card-wide aggregate cap both bind.
   const cardLevel = (
     await db
       .select()
@@ -685,10 +685,12 @@ async function loadMatchingCap(
   )[0]
   if (cardLevel) {
     const fields = capFieldsFromGroup(cardLevel)
-    if (fields) return { ...fields, usageKey: `xcap:${cardLevel.id}` }
+    if (fields) {
+      results.push({ ...fields, usageKey: `xcap:${cardLevel.id}` })
+    }
   }
 
-  return null
+  return results
 }
 
 // P16 (D22): match hand-curated baseline yaml rules on (card, rule_type,

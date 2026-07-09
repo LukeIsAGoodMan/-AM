@@ -35,10 +35,7 @@ const ECONOMIC_RULE_FIELDS = [
   "requiresActivation",
   "requiresRegistration",
   "requiresSelectedCategory",
-  "capAmountHkd",
-  "capRewardAmount",
-  "capPeriod",
-  "capBasis",
+  "caps",
   "appliesTo",
   "stackingPolicy",
   "exclusiveGroup",
@@ -164,10 +161,10 @@ export async function saveRuleEdit(input: EditRuleInput): Promise<EditRuleResult
     requiresActivation: input.requiresActivation,
     requiresRegistration: input.requiresRegistration,
     requiresSelectedCategory: input.requiresSelectedCategory,
-    capAmountHkd: input.capAmountHkd,
-    capRewardAmount: input.capRewardAmount,
-    capPeriod: input.capPeriod,
-    capBasis: input.capBasis,
+    // P17 (D23): the edit form still shows a single cap (backward-compat).
+    // Rewrite caps[0] from the form's flat fields, KEEP caps[1..] so we
+    // don't silently drop a card-level secondary cap on an xchk__ rule.
+    caps: buildCapsFromEdit(current.caps, input),
     appliesTo: input.appliesTo,
     stackingPolicy: input.stackingPolicy,
     exclusiveGroup: input.exclusiveGroup,
@@ -234,10 +231,7 @@ export async function saveRuleEdit(input: EditRuleInput): Promise<EditRuleResult
       requiresActivation: input.requiresActivation,
       requiresRegistration: input.requiresRegistration,
       requiresSelectedCategory: input.requiresSelectedCategory,
-      capAmountHkd: input.capAmountHkd,
-      capRewardAmount: input.capRewardAmount,
-      capPeriod: input.capPeriod,
-      capBasis: input.capBasis,
+      caps: buildCapsFromEdit(current.caps, input),
       appliesTo: input.appliesTo,
       stackingPolicy: input.stackingPolicy,
       exclusiveGroup: input.exclusiveGroup,
@@ -285,4 +279,41 @@ function valuesEqual(a: unknown, b: unknown): boolean {
   const bn = Number(b)
   if (!Number.isNaN(an) && !Number.isNaN(bn)) return an === bn
   return String(a) === String(b)
+}
+
+// P17 (D23): the edit form still exposes a single {basis, period, amount}
+// pair. Rebuild caps[0] from that pair; keep caps[1..] as-is so a card-
+// level secondary cap on an xchk__ rule survives a form submit that only
+// touches the primary. Empty form fields → empty caps[] entirely.
+function buildCapsFromEdit(
+  currentCaps: unknown,
+  input: Pick<
+    EditRuleInput,
+    "ruleSlug" | "capAmountHkd" | "capRewardAmount" | "capPeriod" | "capBasis"
+  >,
+): Array<Record<string, unknown>> {
+  const rest = Array.isArray(currentCaps)
+    ? (currentCaps.slice(1) as Array<Record<string, unknown>>)
+    : []
+  if (!input.capBasis) return rest
+  const existingFirst =
+    Array.isArray(currentCaps) &&
+    currentCaps.length > 0 &&
+    typeof currentCaps[0] === "object" &&
+    currentCaps[0] !== null
+      ? (currentCaps[0] as Record<string, unknown>)
+      : null
+  const usageKey =
+    existingFirst && typeof existingFirst["usageKey"] === "string"
+      ? existingFirst["usageKey"]
+      : input.ruleSlug
+  const first: Record<string, unknown> = {
+    usageKey,
+    basis: input.capBasis,
+    period: input.capPeriod ?? "transaction",
+    amountHkd: input.capAmountHkd !== null ? Number(input.capAmountHkd) : null,
+    rewardAmount:
+      input.capRewardAmount !== null ? Number(input.capRewardAmount) : null,
+  }
+  return [first, ...rest]
 }

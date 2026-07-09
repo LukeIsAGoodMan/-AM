@@ -23,7 +23,7 @@ const baseRule = (
   requiresSelectedCategory: false,
   campaignId: null,
   accrualKey: overrides.ruleId,
-  cap: null,
+  caps: [],
   appliesTo: null,
   stackingPolicy: "additive",
   exclusiveGroup: null,
@@ -100,13 +100,13 @@ describe("calculate — M2 condition matching", () => {
     categorySlug: "online_local",
     isOnline: true,
     isOverseas: false,
-    cap: {
+    caps: [{
       usageKey: "hsbc-red__online_local_bonus",
       basis: "spending",
       period: "year",
       amountHkd: 100000,
       rewardAmount: null,
-    },
+    }],
   })
   const rules = [hsbcRedBase, hsbcRedOnline]
 
@@ -164,13 +164,13 @@ describe("calculate — M2 spending cap", () => {
     formula: { type: "simple_percent", rate: 0.04 },
     categorySlug: "online_local",
     isOnline: true,
-    cap: {
+    caps: [{
       usageKey: "hsbc-red__online_local_bonus",
       basis: "spending",
       period: "year",
       amountHkd: 100000,
       rewardAmount: null,
-    },
+    }],
   })
 
   it("under cap → full 4%", () => {
@@ -238,13 +238,13 @@ describe("calculate — P15 reward-basis cap (D21)", () => {
     ruleType: "category_bonus",
     formula: { type: "simple_percent", rate: 0.15 },
     categorySlug: "public_transport",
-    cap: {
+    caps: [{
       usageKey: "xcap:demo-cap",
       basis: "reward",
       period: "month",
       amountHkd: null,
       rewardAmount: 300,
-    },
+    }],
   })
 
   it("under cap → full 15% reward", () => {
@@ -293,13 +293,13 @@ describe("calculate — P15 reward-basis cap (D21)", () => {
       formula: { type: "simple_percent", rate: 0.05 },
       categorySlug: "online_local",
       isOnline: true,
-      cap: {
+      caps: [{
         usageKey: "xcap:shared-fanout",
         basis: "reward",
         period: "month",
         amountHkd: null,
         rewardAmount: 150,
-      },
+      }],
     })
     // 100 HKD already used across both rules; ruleA would earn 5% × 5000 = 250
     // pre-cap, but only 50 remains → reward=50.
@@ -314,6 +314,118 @@ describe("calculate — P15 reward-basis cap (D21)", () => {
       { cardId: "boc-chill-card", capUsage: { "xcap:shared-fanout": 100 } },
     )
     expect(res.rewardValueHkd).toBe(50)
+  })
+})
+
+// ---------- P17 (D23): multi-cap per rule ----------
+
+describe("calculate — P17 multi-cap per rule (D23)", () => {
+  // A rule carries BOTH a category-specific spending cap (HK$10k/qtr on
+  // airlines) AND a card-wide annual spending cap (HK$120k/yr, shared with
+  // other rules on the same card). Both must bind — the tightest wins per
+  // transaction.
+  const amexExplorerAirlines = baseRule({
+    ruleId: "xchk__earn_rate__category_slug_travel_airline__demo",
+    ruleName: "Amex Explorer travel_airline 6x",
+    ruleType: "category_bonus",
+    formula: { type: "simple_percent", rate: 0.06 },
+    categorySlug: "travel_airline",
+    caps: [
+      // Primary: category-specific fan-out — HK$10k/quarter spending
+      {
+        usageKey: "xcap:airlines-quarter",
+        basis: "spending",
+        period: "quarter",
+        amountHkd: 10000,
+        rewardAmount: null,
+      },
+      // Secondary: card-level — HK$120k/year spending
+      {
+        usageKey: "xcap:card-annual",
+        basis: "spending",
+        period: "year",
+        amountHkd: 120000,
+        rewardAmount: null,
+      },
+    ],
+  })
+
+  it("both caps unused → tighter (category) cap binds; reward is 6% × 10000 = 600", () => {
+    const res = calculate(
+      "amex-explorer",
+      [amexExplorerAirlines],
+      txn({ amountHkd: 20000, categorySlug: "travel_airline" }),
+      {
+        cardId: "amex-explorer",
+        capUsage: { "xcap:airlines-quarter": 0, "xcap:card-annual": 0 },
+      },
+    )
+    // eligibleSpend clipped to min(20000, 10000, 120000) = 10000
+    expect(res.rewardValueHkd).toBe(600)
+  })
+
+  it("card-level cap already 118k used → 2k left; category cap allows 10k; tighter card-level binds", () => {
+    const res = calculate(
+      "amex-explorer",
+      [amexExplorerAirlines],
+      txn({ amountHkd: 20000, categorySlug: "travel_airline" }),
+      {
+        cardId: "amex-explorer",
+        capUsage: { "xcap:airlines-quarter": 0, "xcap:card-annual": 118000 },
+      },
+    )
+    // eligibleSpend = min(20000, 10000, 2000) = 2000
+    // reward = 2000 × 6% = 120
+    expect(res.rewardValueHkd).toBe(120)
+  })
+
+  it("category cap fully consumed → zero reward even with plenty of card-level room", () => {
+    const res = calculate(
+      "amex-explorer",
+      [amexExplorerAirlines],
+      txn({ amountHkd: 5000, categorySlug: "travel_airline" }),
+      {
+        cardId: "amex-explorer",
+        capUsage: { "xcap:airlines-quarter": 10000, "xcap:card-annual": 0 },
+      },
+    )
+    expect(res.rewardValueHkd).toBe(0)
+  })
+
+  it("spending cap + reward cap on same rule — reward cap trims after formula", () => {
+    // A hypothetical rule with a HK$50k spending cap AND HK$500 reward cap.
+    // 60000 spend → clipped to 50000 by spending cap → 50000 × 5% = 2500 reward
+    // → trimmed to 500 by reward cap.
+    const rule = baseRule({
+      ruleId: "hybrid-caps",
+      ruleName: "hybrid",
+      ruleType: "category_bonus",
+      formula: { type: "simple_percent", rate: 0.05 },
+      categorySlug: "general_local",
+      caps: [
+        {
+          usageKey: "hybrid-spend",
+          basis: "spending",
+          period: "month",
+          amountHkd: 50000,
+          rewardAmount: null,
+        },
+        {
+          usageKey: "hybrid-reward",
+          basis: "reward",
+          period: "month",
+          amountHkd: null,
+          rewardAmount: 500,
+        },
+      ],
+    })
+    const res = calculate(
+      "test",
+      [rule],
+      txn({ amountHkd: 60000, categorySlug: "general_local" }),
+      { cardId: "test", capUsage: {} },
+    )
+    expect(res.rewardValueHkd).toBe(500)
   })
 })
 

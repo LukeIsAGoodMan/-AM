@@ -28,7 +28,7 @@ const baseRule = (
   requiresSelectedCategory: false,
   campaignId: null,
   accrualKey: o.ruleId,
-  cap: null,
+  caps: [],
   appliesTo: null,
   stackingPolicy: "additive",
   exclusiveGroup: null,
@@ -51,13 +51,13 @@ const hsbcRedRules: ResolvedRule[] = [
     categorySlug: "online_local",
     isOnline: true,
     isOverseas: false,
-    cap: {
+    caps: [{
       usageKey: "hsbc-red__online_local_bonus",
       basis: "spending",
       period: "year",
       amountHkd: 100000,
       rewardAmount: null,
-    },
+    }],
     priority: 80,
   }),
 ]

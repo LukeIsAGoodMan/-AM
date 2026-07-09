@@ -10,10 +10,10 @@ import {
   sourceDocuments,
 } from "@/db/schema/catalog"
 import { RewardFormulaSchema } from "@/lib/schemas/formula"
-import type {
-  ResolvedRule,
-  ResolvedCap,
-  StackingPolicy,
+import {
+  parseCapsJson,
+  type ResolvedRule,
+  type StackingPolicy,
 } from "@/lib/calculator/resolved-rule"
 
 // Bundle every read the /calculator-test page needs into one server fetch.
@@ -174,17 +174,7 @@ function mapRow(row: Row): ResolvedRule {
       `Rule '${r.slug}' is points_per_hkd but reward_currency_id is NULL. See D19.`,
     )
   }
-  const cap: ResolvedCap | null =
-    r.capBasis !== null
-      ? {
-          usageKey: r.capUsageKey ?? r.slug,
-          basis: r.capBasis as ResolvedCap["basis"],
-          period: (r.capPeriod as ResolvedCap["period"]) ?? "transaction",
-          amountHkd: r.capAmountHkd !== null ? Number(r.capAmountHkd) : null,
-          rewardAmount:
-            r.capRewardAmount !== null ? Number(r.capRewardAmount) : null,
-        }
-      : null
+  const caps = parseCapsJson(r.caps, r.slug)
   return {
     ruleId: r.slug,
     ruleName: r.ruleName,
@@ -204,7 +194,7 @@ function mapRow(row: Row): ResolvedRule {
     requiresSelectedCategory: r.requiresSelectedCategory,
     campaignId: r.campaignId,
     accrualKey: r.slug,
-    cap,
+    caps,
     appliesTo: r.appliesTo,
     stackingPolicy: r.stackingPolicy as StackingPolicy,
     exclusiveGroup: r.exclusiveGroup,
