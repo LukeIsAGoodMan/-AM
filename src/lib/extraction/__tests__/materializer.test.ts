@@ -44,9 +44,15 @@ beforeAll(async () => {
   await aggregateClaims({ scope: { cardSlugs: ["hsbc-red"] } })
 })
 
-// Helper: scoped reset of one group's materialized rule, used by the
-// two tests that need to exercise the `kind='created'` path. Keeping it
-// per-group means we never wipe other cards' demo state.
+// Helper: scoped reset of one group's materialized rule, used by tests
+// that need to exercise the `kind='created'` path. Keeping it per-group
+// means we never wipe other cards' demo state.
+//
+// P16 (D22): the materializer's dedup path may link a group to a hand-
+// curated yaml rule. Nuking it here would archive real curated data
+// permanently. Guard: only delete xchk__-prefixed rules; if the group
+// points at a yaml rule, just null the approved_rule_id (letting the
+// group be re-materialized without touching yaml state).
 async function resetGroupMaterialization(groupId: string): Promise<void> {
   const group = (
     await db
@@ -56,24 +62,35 @@ async function resetGroupMaterialization(groupId: string): Promise<void> {
   )[0]
   if (!group?.approvedRuleId) return
   const oldRuleId = group.approvedRuleId
+  const oldRule = (
+    await db
+      .select({ slug: rewardRules.slug })
+      .from(rewardRules)
+      .where(eq(rewardRules.id, oldRuleId))
+  )[0]
   await db
     .update(crossCheckGroups)
     .set({ approvedRuleId: null })
     .where(eq(crossCheckGroups.id, groupId))
-  await db
-    .delete(rewardRuleSources)
-    .where(eq(rewardRuleSources.ruleId, oldRuleId))
-  await db.delete(rewardRules).where(eq(rewardRules.id, oldRuleId))
+  if (oldRule && oldRule.slug.startsWith("xchk__")) {
+    await db
+      .delete(rewardRuleSources)
+      .where(eq(rewardRuleSources.ruleId, oldRuleId))
+    await db.delete(rewardRules).where(eq(rewardRules.id, oldRuleId))
+  }
 }
 
 describe("P7 materializer — single-group entry point", () => {
-  it("materializes an earn_rate / online_local group into a reward_rule", async () => {
+  it("materializes an earn_rate / utilities group into a reward_rule", async () => {
     const hsbcRedId = (
       await db.select({ id: cards.id }).from(cards).where(eq(cards.slug, "hsbc-red"))
     )[0]!.id
 
-    // The aggregator should have produced a category_slug=online_local
-    // earn_rate group; it's our canonical 'agreed' example.
+    // hsbc-red has NO yaml rule for utilities (yaml covers base_earn,
+    // online_local, and campaign online_local only) so the P16 dedup
+    // path stays out of the way and materializeGroup takes the 'created'
+    // path. The aggregator's category_slug=utilities group is our
+    // canonical 'agreed' example.
     const group = (
       await db
         .select()
@@ -84,7 +101,7 @@ describe("P7 materializer — single-group entry point", () => {
     ).find(
       (g) =>
         g.claimType === "earn_rate" &&
-        g.keyDimension === "category_slug=online_local",
+        g.keyDimension === "category_slug=utilities",
     )
     expect(group).toBeDefined()
     expect(group!.canonicalPayload).toBeTruthy()
@@ -101,8 +118,8 @@ describe("P7 materializer — single-group entry point", () => {
     // Slug carries the xchk__ prefix and the dimension; reward_rule row
     // exists with the expected fields.
     expect(outcome.ruleSlug.startsWith("xchk__")).toBe(true)
-    expect(outcome.ruleType).toBe("online_bonus") // online_local + isOnline=true
-    expect(outcome.supportingSourceCount).toBeGreaterThanOrEqual(2) // moneyhero + mrmiles + possibly official
+    expect(outcome.ruleType).toBe("online_bonus") // utilities extraction typically emits isOnline=true, deriving online_bonus
+    expect(outcome.supportingSourceCount).toBeGreaterThanOrEqual(1)
 
     const ruleRow = (
       await db
@@ -150,7 +167,7 @@ describe("P7 materializer — single-group entry point", () => {
     ).find(
       (g) =>
         g.claimType === "earn_rate" &&
-        g.keyDimension === "category_slug=online_local",
+        g.keyDimension === "category_slug=utilities",
     )!
 
     await resetGroupMaterialization(group.id)
@@ -225,6 +242,47 @@ describe("P7 materializer — single-group entry point", () => {
     expect(outcome.kind).toBe("skipped")
     if (outcome.kind !== "skipped") return
     expect(outcome.reason).toMatch(/not in reward_currencies/)
+  })
+
+  // D22 (P16) — dedup an earn_rate group against a hand-curated YAML rule
+  // covering the same (card, rule_type, category) combo. Without this,
+  // additive stacking of yaml + xchk on the same category silently doubles
+  // the effective rate (audit finding: HSBC Red online_local 4% × 2 = 8%).
+  it("skips earn_rate base_earn groups when a yaml base_earn already exists on the card (D22)", async () => {
+    // hsbc-red has a hand-curated yaml base_earn rule (hsbc-red__base_earn),
+    // AND the extractor emits its own base_earn group for the same card. If
+    // both materialize, the calculator adds them → doubled base rate. P16
+    // must skip the xchk one.
+    const hsbcRed = (
+      await db
+        .select({ id: cards.id })
+        .from(cards)
+        .where(eq(cards.slug, "hsbc-red"))
+    )[0]
+    expect(hsbcRed).toBeDefined()
+    const baseEarnGroup = (
+      await db
+        .select()
+        .from(crossCheckGroups)
+        .where(
+          and(
+            eq(crossCheckGroups.cardId, hsbcRed!.id),
+            eq(crossCheckGroups.claimType, "earn_rate"),
+            eq(crossCheckGroups.keyDimension, "rule_type=base_earn"),
+            inArray(crossCheckGroups.status, ["agreed", "single_source"]),
+          ),
+        )
+        .limit(1)
+    )[0]
+    expect(
+      baseEarnGroup,
+      "hsbc-red should have an eligible base_earn cross_check_group. If the corpus was reset without re-running p3+p4, this pin is stale.",
+    ).toBeDefined()
+    await resetGroupMaterialization(baseEarnGroup!.id)
+    const outcome = await materializeGroup(baseEarnGroup!.id)
+    expect(outcome.kind).toBe("skipped")
+    if (outcome.kind !== "skipped") return
+    expect(outcome.reason).toMatch(/dedup against yaml rule/)
   })
 
   // D21 (P15) — fan-out stitching: a cap group with

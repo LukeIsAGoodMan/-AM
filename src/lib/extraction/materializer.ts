@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, like, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, like, sql, type SQL } from "drizzle-orm"
 import { db } from "@/db/client"
 import {
   cards,
@@ -268,6 +268,34 @@ async function materializeOneInternal(
     : null
 
   const ruleType = deriveRuleType(group.claimType, payload)
+
+  // P16 (D22): dedup against hand-curated YAML rules. If the card already
+  // has an approved non-xchk__, non-campaign rule that covers the same
+  // (rule_type, category_id) combo, the extractor is re-deriving a fact
+  // already encoded in YAML. Materializing anyway would double-count
+  // additively (audit finding: HSBC Red / BOC Chill online_local 4% ×
+  // yaml + 4% × xchk = 8% effective). Skip; link group to the yaml rule
+  // so future re-runs don't retry.
+  if (group.claimType === "earn_rate") {
+    const yamlRule = await findMatchingYamlBaselineRule(
+      group.cardId,
+      ruleType,
+      categoryId,
+    )
+    if (yamlRule) {
+      await db
+        .update(crossCheckGroups)
+        .set({ approvedRuleId: yamlRule.id, updatedAt: new Date() })
+        .where(eq(crossCheckGroups.id, group.id))
+      return {
+        kind: "skipped",
+        groupId: group.id,
+        reason: `dedup against yaml rule '${yamlRule.slug}' (same rule_type + category)`,
+        existingRuleId: yamlRule.id,
+      }
+    }
+  }
+
   const ruleName = synthesizeRuleName(group, payload)
   // The discriminator lives in src/lib/schemas/formula.ts:
   //   simple_percent | points_per_hkd | tiered_percent | tiered_points | no_reward
@@ -661,6 +689,36 @@ async function loadMatchingCap(
   }
 
   return null
+}
+
+// P16 (D22): match hand-curated baseline yaml rules on (card, rule_type,
+// category). Excludes xchk__ (that's what we're deduping against) and
+// excludes campaign rules (Q3 promo etc. are separate from baseline;
+// they can co-exist with an xchk baseline rule of the same category).
+async function findMatchingYamlBaselineRule(
+  cardId: string,
+  ruleType: string,
+  categoryId: string | null,
+): Promise<{ id: string; slug: string } | null> {
+  const row = (
+    await db
+      .select({ id: rewardRules.id, slug: rewardRules.slug })
+      .from(rewardRules)
+      .where(
+        and(
+          eq(rewardRules.cardId, cardId),
+          eq(rewardRules.status, "approved"),
+          eq(rewardRules.ruleType, ruleType),
+          isNull(rewardRules.campaignId),
+          sql`slug NOT LIKE 'xchk__%'`,
+          categoryId === null
+            ? isNull(rewardRules.categoryId)
+            : eq(rewardRules.categoryId, categoryId),
+        ),
+      )
+      .limit(1)
+  )[0]
+  return row ?? null
 }
 
 async function lookupCategoryId(slug: string | null): Promise<string | null> {
