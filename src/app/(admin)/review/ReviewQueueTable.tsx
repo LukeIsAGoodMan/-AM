@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -42,6 +43,7 @@ function shortDate(d: Date | null): string {
 }
 
 export function ReviewQueueTable({ rows }: { rows: ReviewTaskRow[] }) {
+  const router = useRouter()
   const [sorting, setSorting] = useState<SortingState>([])
   const [search, setSearch] = useState("")
   // Default: just open tasks. Reviewers can opt into the wider view.
@@ -325,18 +327,44 @@ export function ReviewQueueTable({ rows }: { rows: ReviewTaskRow[] }) {
               ))}
             </thead>
             <tbody>
-              {table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50"
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2 align-top">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {table.getRowModel().rows.map((row) => {
+                // Whole-row click → detail page. Reviewers couldn't spot
+                // the trailing `open →` link when the table extended off
+                // the right edge of the viewport (many card names are
+                // multi-line, pushing the action column off-screen). The
+                // <Link> in the action column stays for keyboard nav +
+                // screen-reader affordance + middle-click / cmd-click.
+                //
+                // Suppress the row handler when the user clicked an
+                // inline link/button/select (Card link, Sources link,
+                // search box focus), otherwise interactive elements
+                // become traps for the outer navigation.
+                const href = row.original.groupId
+                  ? `/review/${row.original.taskId}`
+                  : null
+                const onRowClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
+                  if (!href) return
+                  const target = e.target as HTMLElement
+                  if (target.closest("a, button, input, select, textarea")) return
+                  router.push(href)
+                }
+                return (
+                  <tr
+                    key={row.id}
+                    onClick={onRowClick}
+                    className={cn(
+                      "border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50",
+                      href && "cursor-pointer",
+                    )}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-3 py-2 align-top">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
               {filtered.length === 0 ? (
                 <tr>
                   <td
