@@ -41,11 +41,30 @@ export function applyRuleWithCap(
         capRemainingAfter = remaining - eligibleSpend
         break
       }
-      case "reward":
+      case "reward": {
+        // P15 (D21): reward-basis cap limits total reward units accrued in
+        // the period, denominated in the same units as applyFormula returns
+        // (HKD for simple_percent, miles/points for points_per_hkd). Compute
+        // the pre-cap reward, then trim it at the remaining budget.
+        if (rule.cap.rewardAmount === null) break
+        const rewardPre = applyFormula(
+          rule.formula,
+          { ...txn, amountHkd: eligibleSpend },
+          accrualUsedHkd,
+        )
+        const used = capUsage[rule.cap.usageKey] ?? 0
+        const remaining = Math.max(0, rule.cap.rewardAmount - used)
+        const rewardCapped = Math.min(rewardPre, remaining)
+        return {
+          rewardUnits: rewardCapped,
+          eligibleSpendHkd: eligibleSpend,
+          capRemainingAfter: remaining - rewardCapped,
+        }
+      }
       case "transaction_count":
-        // Not used by any M3 rule. Wired up in M4+ as adversarial cards arrive.
+        // Not used by any live rule. Wire when an adversarial card needs it.
         throw new Error(
-          `cap.basis=${rule.cap.basis} not implemented yet (M3 supports 'spending' only)`,
+          `cap.basis=${rule.cap.basis} not implemented yet`,
         )
     }
   }

@@ -279,6 +279,33 @@ CLI default behavior is "no scope = no work" — must pass `--card-slug` or `--s
 
 ---
 
+## D21 (P15) — Shared cap accrual via `cap_usage_key`; fan-out + card-level cap materialization; reward-basis cap in the calculator
+
+**Decision**: One materialized reward_rule can now inherit a cap from a cross_check_group whose key_dimension DOESN'T exactly match its own — via two new stitch paths in the materializer, both writing a shared `cap_usage_key` so the calculator's accrual bucket is shared across all rules the cap fans out to:
+
+- **applies_to fan-out**: a cap group with `key_dimension='applies_to=X,Y,Z'` stitches onto every earn_rate rule on the same card whose category ∈ {X, Y, Z}. All those rules get `cap_usage_key = 'xcap:<capGroupId>'`.
+- **Card-level fallback**: a cap group with `key_dimension` matching `cap_default=<period>_<basis>_card_level` (D20's suffix) stitches onto every earn_rate rule on the card that didn't get a more-specific cap first. Same `xcap:<capGroupId>` bucket per card+cap-group.
+
+Match precedence: (1) exact category_slug=X match → per-rule cap (existing behaviour, `cap_usage_key` stays NULL), (2) applies_to fan-out → shared, (3) card-level fallback → shared. First hit wins.
+
+At the calculator side, `mapRow` in the three query-loaders reads `usageKey: r.capUsageKey ?? r.slug` — non-null enables sharing, null preserves per-rule accrual. `applyRuleWithCap` also gains a `basis='reward'` branch (was `throw "not implemented"`): compute the pre-cap reward via `applyFormula`, then trim it at `cap.rewardAmount - capUsage[usageKey]`. Migration 0012 adds the `cap_usage_key` column to `reward_rules` as a nullable `text`.
+
+**Why**:
+- **The 178/178 audit → P14 got 5, P15 got 35**: P14 wired the LLM/aggregator/materializer plumbing so category-specific caps stitch, but that only helped rules whose cap group had `key_dimension = category_slug=X` verbatim. Real HK T&C caps are mostly *card-wide* ("aggregate HK$500/month reward across all bonuses") or *multi-category applies_to* ("first HK$10,000 in dining OR overseas each quarter"). P14 left them orphaned. P15's two new paths pick them up: Citi Octopus now has HK$50k/mo reward cap on all 7 of its rules (shared bucket), BOC Chill has HK$150/mo shared across 3 online/overseas rules, DBS Black/Eminent get their spending caps, etc.
+- **`cap_usage_key` in a column, not derived**: two options were considered — (a) store on the row like this, (b) derive at load-time in mapRow by hashing (card_id, cap_group_id). (a) won because it makes the accrual identity visible in SQL for debugging (`SELECT slug, cap_usage_key FROM reward_rules WHERE cap_usage_key = 'xcap:XYZ'` immediately shows every rule that shares that bucket), and it survives future refactors of loadMatchingCap. The migration is a single nullable column — zero backfill.
+- **NULL fallback to rule.slug preserves the invariant**: pre-P15 rules and freshly-materialized single-rule caps both leave the column NULL, and mapRow uses `r.slug` — same as before. No behavioural change on the majority of rules; the sharing semantics only kick in for the ~30 fan-out/card-level rules where the column is populated.
+- **Reward-basis cap was already needed**: the pre-P15 corpus had zero reward-basis caps materialized because the calculator threw and no cap group was stitching them anyway. P15's shared-bucket fan-out immediately surfaces them (Citi Octopus HK$50k/mo, BOC Chill HK$150/mo, Citi Rewards HK$300/campaign). Implementing basis='reward' is small — compute reward first, cap the total — and the semantics match how the extractor emits `rewardAmount` (same units as `applyFormula` returns: HKD for simple_percent, miles/points for points_per_hkd).
+- **Card-level fallback runs LAST, not FIRST**: if we ran it first, a rule with a more-specific category cap would be capped by the loose card-wide cap instead. The correct semantic when a rule has both a specific and card-level cap in T&C is "the tighter one bites first" — modelling that fully requires multi-cap-per-rule support which P15 v1 doesn't do. Running specific first at least gets the calculator to enforce the tighter bound, which is what a reviewer would expect.
+
+**Knock-on**:
+- **cap-stitch coverage 0/178 → 35/73 in two milestones** (P14's plumbing + P15's fan-out). Rule-count differs because P14's full re-extract also churned rule counts. The remaining 38 unstitched are: (a) rules where no cap group exists on the card at all — the T&C really has no cap for that category, or the LLM missed it; (b) rules whose earn_rate group has payload-quality issues and materializes with `skipped` reason; (c) rules on cards with conflict-status cap groups (like Citi Octopus HK$300 fare-only which conflicts against HK$500 aggregate — human triage territory).
+- **Calculator tests**: new suite pins reward-basis cap at three points (under cap → full reward, cross-boundary → trimmed, fully consumed → zero) plus one shared-usageKey test proving two rules with the same `xcap:X` string read from the same accrual bucket. `apply-cap.ts`'s `transaction_count` branch still throws — no live rule uses it; wire when needed.
+- **Materializer test**: read-only invariant added — the live corpus must contain at least one `xchk__` approved rule with a non-null `xcap:` prefixed `cap_usage_key`. If someone deletes the fan-out branch or nuke every fan-out cap group, the test fails loudly.
+- **P14's promise landed**: audit-level cap-stitch coverage crossed the "usable" threshold. Rankings for scenarios like "public_transport HK$5000 on Citi Octopus" now respect the 300/mo cap and don't produce a phantom 750 HKD.
+- **Not addressed here (P16+ candidates)**: (a) multi-cap per rule (tightest-bite semantics for a rule with both category-specific + card-level caps in T&C), (b) YAML rule dedupe (still the audit finding about HSBC Red / BOC Chill 4% × 2 stacked = 8% effective), (c) conflict cap resolution (Citi Octopus HK$300 fare-only vs HK$500 aggregate — reviewer triage). None block calculator correctness on the majority of scenarios; all worth revisiting once the review-queue backlog clears.
+
+---
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:

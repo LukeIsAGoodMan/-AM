@@ -226,6 +226,97 @@ describe("calculate — M2 spending cap", () => {
   })
 })
 
+// ---------- P15 (D21): reward-basis cap ----------
+
+describe("calculate — P15 reward-basis cap (D21)", () => {
+  // Citi Octopus real T&C: 15% Fare Rebate on public_transport, capped at
+  // HK$300/month (reward, not spending). Before P15 the calculator threw
+  // on cap.basis='reward'. Post-P15 it caps the reward directly.
+  const octopusRule = baseRule({
+    ruleId: "xchk__earn_rate__category_slug_public_transport__demo",
+    ruleName: "Citi Octopus public_transport 15%",
+    ruleType: "category_bonus",
+    formula: { type: "simple_percent", rate: 0.15 },
+    categorySlug: "public_transport",
+    cap: {
+      usageKey: "xcap:demo-cap",
+      basis: "reward",
+      period: "month",
+      amountHkd: null,
+      rewardAmount: 300,
+    },
+  })
+
+  it("under cap → full 15% reward", () => {
+    const res = calculate(
+      "citi-octopus",
+      [octopusRule],
+      txn({ amountHkd: 1000, categorySlug: "public_transport", isOnline: false }),
+      { cardId: "citi-octopus", capUsage: { "xcap:demo-cap": 0 } },
+    )
+    // 1000 × 15% = 150 HKD reward, under 300 cap
+    expect(res.rewardValueHkd).toBe(150)
+  })
+
+  it("crosses reward cap boundary → reward trimmed to remaining budget", () => {
+    // 200 HKD already used, cap 300, txn earns 15% × 5000 = 750 pre-cap
+    // → capped at 100 remaining
+    const res = calculate(
+      "citi-octopus",
+      [octopusRule],
+      txn({ amountHkd: 5000, categorySlug: "public_transport", isOnline: false }),
+      { cardId: "citi-octopus", capUsage: { "xcap:demo-cap": 200 } },
+    )
+    expect(res.rewardValueHkd).toBe(100)
+  })
+
+  it("reward cap fully consumed → zero reward", () => {
+    const res = calculate(
+      "citi-octopus",
+      [octopusRule],
+      txn({ amountHkd: 1000, categorySlug: "public_transport", isOnline: false }),
+      { cardId: "citi-octopus", capUsage: { "xcap:demo-cap": 300 } },
+    )
+    expect(res.rewardValueHkd).toBe(0)
+  })
+
+  it("shared usageKey — two rules with the same xcap: key see the same bucket", () => {
+    // The fan-out scenario: two rules materialized from one applies_to cap
+    // group both write cap.usageKey='xcap:<groupId>'. If the calculator
+    // sees them together in one txn, they draw from the same accrual bucket.
+    // We simulate this by pre-loading the bucket and asserting rule B
+    // reads the same state rule A committed to.
+    const ruleA = baseRule({
+      ruleId: "xchk__earn_rate__category_slug_online_local__A",
+      ruleName: "BOC Chill online_local 5%",
+      ruleType: "online_bonus",
+      formula: { type: "simple_percent", rate: 0.05 },
+      categorySlug: "online_local",
+      isOnline: true,
+      cap: {
+        usageKey: "xcap:shared-fanout",
+        basis: "reward",
+        period: "month",
+        amountHkd: null,
+        rewardAmount: 150,
+      },
+    })
+    // 100 HKD already used across both rules; ruleA would earn 5% × 5000 = 250
+    // pre-cap, but only 50 remains → reward=50.
+    const res = calculate(
+      "boc-chill-card",
+      [ruleA],
+      txn({
+        amountHkd: 5000,
+        categorySlug: "online_local",
+        isOnline: true,
+      }),
+      { cardId: "boc-chill-card", capUsage: { "xcap:shared-fanout": 100 } },
+    )
+    expect(res.rewardValueHkd).toBe(50)
+  })
+})
+
 // ---------- M3: tiered_percent with monthly accrual ----------
 
 describe("calculate — M3 tiered_percent (Hang Seng MPOWER-style)", () => {

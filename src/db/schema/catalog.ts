@@ -256,6 +256,12 @@ export const rewardRules = pgTable("reward_rules", {
   capRewardAmount: numeric("cap_reward_amount", { precision: 14, scale: 4 }),
   capPeriod: text("cap_period"), // transaction / day / month / quarter / year / campaign / none
   capBasis: text("cap_basis"), // spending / reward / transaction_count
+  // P15 (D21): when set, the calculator's capUsage bucket is keyed by this
+  // string instead of the rule's slug — so multiple rules stitched from one
+  // shared cap group (applies_to fan-out, card-level) accrue against the
+  // same bucket. NULL means "single-rule cap" and the mapRow layer falls
+  // back to rule.slug.
+  capUsageKey: text("cap_usage_key"),
 
   // M6: temporal — calculator filters on these in step 2 (date range).
   effectiveStart: date("effective_start"),

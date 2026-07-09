@@ -122,7 +122,10 @@ function mapRow(row: Row): ResolvedRule {
   const cap: ResolvedCap | null =
     r.capBasis !== null
       ? {
-          usageKey: r.slug,
+          // P15 (D21): capUsageKey is set when the cap is shared across
+          // multiple rules (applies_to fan-out or card-level cap). Falling
+          // back to slug preserves the single-rule accrual behaviour.
+          usageKey: r.capUsageKey ?? r.slug,
           basis: r.capBasis as ResolvedCap["basis"],
           period:
             (r.capPeriod as ResolvedCap["period"]) ?? "transaction",

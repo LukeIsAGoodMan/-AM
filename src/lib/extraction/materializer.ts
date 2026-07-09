@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, like, type SQL } from "drizzle-orm"
 import { db } from "@/db/client"
 import {
   cards,
@@ -328,6 +328,7 @@ async function materializeOneInternal(
         capRewardAmount: cap?.rewardAmount ?? null,
         capPeriod: cap?.period ?? null,
         capBasis: cap?.basis ?? null,
+        capUsageKey: cap?.usageKey ?? null,
         confidenceScore: Number(group.aggregateConfidence).toFixed(3),
         sourceId: primary.sourceId,
         notes: `Materialized from cross_check_group ${group.id} (verdict=${group.status}, ${supports.length} supporting source${supports.length === 1 ? "" : "s"}).`,
@@ -541,29 +542,20 @@ type CapShape = {
   rewardAmount: string | null
   period: string | null
   basis: string | null
+  // P15 (D21): NULL means "single-rule accrual" (calculator falls back
+  // to rule.slug in mapRow). Non-null when this cap is shared across
+  // multiple rules (applies_to fan-out or card-level fallback).
+  usageKey: string | null
 }
 
-async function loadMatchingCap(
-  cardId: string,
-  earnRateKeyDimension: string,
-): Promise<CapShape | null> {
-  // Only stitch caps whose verdict is approvable too; a conflict cap is
-  // not safe to apply automatically.
-  const capGroups = await db
-    .select()
-    .from(crossCheckGroups)
-    .where(
-      and(
-        eq(crossCheckGroups.cardId, cardId),
-        eq(crossCheckGroups.claimType, "cap"),
-        eq(crossCheckGroups.keyDimension, earnRateKeyDimension),
-        inArray(crossCheckGroups.status, ["agreed", "single_source"]),
-      ),
-    )
-    .limit(1)
-  const cap = capGroups[0]
-  if (!cap || !cap.canonicalPayload) return null
-  const p = cap.canonicalPayload as Record<string, unknown>
+// Extract the (amountHkd, rewardAmount, period, basis) shape from a cap
+// group's canonical_payload. Returns null if the group's canonical is
+// missing entirely.
+function capFieldsFromGroup(
+  group: { canonicalPayload: unknown },
+): Omit<CapShape, "usageKey"> | null {
+  if (!group.canonicalPayload) return null
+  const p = group.canonicalPayload as Record<string, unknown>
   return {
     amountHkd:
       typeof p["amountHkd"] === "number" ? String(p["amountHkd"]) : null,
@@ -572,6 +564,103 @@ async function loadMatchingCap(
     period: typeof p["period"] === "string" ? (p["period"] as string) : null,
     basis: typeof p["basis"] === "string" ? (p["basis"] as string) : null,
   }
+}
+
+async function loadMatchingCap(
+  cardId: string,
+  earnRateKeyDimension: string,
+): Promise<CapShape | null> {
+  // P15 match order — first hit wins:
+  //   (1) Exact category_slug=X match → per-rule cap, usageKey stays NULL.
+  //   (2) applies_to=X,Y,... where the rule's category ∈ set → fan-out.
+  //       Multiple earn_rate rules materialized from that cap group SHARE
+  //       one usageKey so the calculator's accrual bucket is shared.
+  //   (3) Card-level (cap_default=*_card_level) → same idea, one bucket
+  //       per (card, cap_group). Only stitched when no more-specific cap
+  //       exists — a category-specific cap always wins over a card-wide
+  //       one on the same rule.
+  // Only approvable statuses are eligible — D16 says a conflict cap is
+  // not safe to apply automatically (the reviewer picks canonical first).
+  const eligible = inArray(crossCheckGroups.status, ["agreed", "single_source"])
+
+  // (1) Exact match.
+  const exact = (
+    await db
+      .select()
+      .from(crossCheckGroups)
+      .where(
+        and(
+          eq(crossCheckGroups.cardId, cardId),
+          eq(crossCheckGroups.claimType, "cap"),
+          eq(crossCheckGroups.keyDimension, earnRateKeyDimension),
+          eligible,
+        ),
+      )
+      .limit(1)
+  )[0]
+  if (exact) {
+    const fields = capFieldsFromGroup(exact)
+    if (fields) return { ...fields, usageKey: null }
+  }
+
+  // Both fan-out and card-level need the earn_rate rule's category. If
+  // the dimension isn't `category_slug=X` (e.g. rule_type=base_earn),
+  // neither can apply.
+  const categoryFromDim = earnRateKeyDimension.startsWith("category_slug=")
+    ? earnRateKeyDimension.slice("category_slug=".length)
+    : null
+
+  // (2) Fan-out via applies_to. Load all applies_to=... cap groups on the
+  // card, then match by category membership (Postgres `LIKE` can't easily
+  // check "X ∈ comma-sorted list", but the sets are small — <10 rows).
+  if (categoryFromDim) {
+    const fanoutCandidates = await db
+      .select()
+      .from(crossCheckGroups)
+      .where(
+        and(
+          eq(crossCheckGroups.cardId, cardId),
+          eq(crossCheckGroups.claimType, "cap"),
+          like(crossCheckGroups.keyDimension, "applies_to=%"),
+          eligible,
+        ),
+      )
+    const fanoutHit = fanoutCandidates.find((g) => {
+      // key_dimension format: "applies_to=X,Y,Z" — split on '=' then ','
+      const rhs = g.keyDimension.slice("applies_to=".length)
+      const parts = rhs.split(",").map((s) => s.trim())
+      return parts.includes(categoryFromDim)
+    })
+    if (fanoutHit) {
+      const fields = capFieldsFromGroup(fanoutHit)
+      if (fields) return { ...fields, usageKey: `xcap:${fanoutHit.id}` }
+    }
+  }
+
+  // (3) Card-level fallback. `cap_default=<period>_<basis>_card_level`
+  // groups apply to the card as a whole (aggregate cap across bonuses).
+  // If a rule has no more-specific cap, stitch a card-level one so the
+  // calculator at least respects the outer bound.
+  const cardLevel = (
+    await db
+      .select()
+      .from(crossCheckGroups)
+      .where(
+        and(
+          eq(crossCheckGroups.cardId, cardId),
+          eq(crossCheckGroups.claimType, "cap"),
+          like(crossCheckGroups.keyDimension, "cap_default=%_card_level"),
+          eligible,
+        ),
+      )
+      .limit(1)
+  )[0]
+  if (cardLevel) {
+    const fields = capFieldsFromGroup(cardLevel)
+    if (fields) return { ...fields, usageKey: `xcap:${cardLevel.id}` }
+  }
+
+  return null
 }
 
 async function lookupCategoryId(slug: string | null): Promise<string | null> {

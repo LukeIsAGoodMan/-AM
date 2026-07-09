@@ -157,7 +157,7 @@ function mapRow(row: Row): ResolvedRule {
   const cap: ResolvedCap | null =
     r.capBasis !== null
       ? {
-          usageKey: r.slug,
+          usageKey: r.capUsageKey ?? r.slug,
           basis: r.capBasis as ResolvedCap["basis"],
           period: (r.capPeriod as ResolvedCap["period"]) ?? "transaction",
           amountHkd: r.capAmountHkd !== null ? Number(r.capAmountHkd) : null,
