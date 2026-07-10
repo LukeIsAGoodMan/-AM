@@ -53,4 +53,15 @@ sources:
     status: active
     notes: P9-style multi-source pull (里先生 Mr. Miles blog).
 
+  - slug: american-express-platinum-card-official-pdf-tc
+    sourceType: official_pdf_tc
+    sourcePriority: 1
+    title: American Express Platinum Credit Card — Benefits Terms & Conditions PDF
+    url: https://www.americanexpress.com/content/dam/amex/hk/en/staticassets/pdf/cards/platinum-credit-card/tnc_2_eng.pdf
+    language: en
+    status: active
+    notes: Day 2 audit fix — official page was 2504 chars (product overview
+      only). PDF T&C is authoritative for reward rates + Membership Rewards
+      earn structure.
+
 rules: []

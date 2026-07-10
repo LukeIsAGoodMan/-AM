@@ -56,6 +56,18 @@ sources:
       page; substituted the AE-hub comparison page which covers Gold
       alongside Platinum / Explorer / etc.
 
+  - slug: american-express-gold-card-official-pdf-tc
+    sourceType: official_pdf_tc
+    sourcePriority: 1
+    title: American Express Card Cardmember Agreement PDF (covers Gold)
+    url: https://www.americanexpress.com/content/dam/amex/hk/en/staticassets/pdf/cardmember-agreement-and-fees-and-charges/RCP_CM.pdf
+    language: en
+    status: active
+    notes: Day 2 audit fix — official page was 2527 chars (product overview).
+      RCP_CM.pdf is the shared cardmember agreement for the American Express
+      Card / Gold Card / Peninsula Gold Card, covering fees + earn structure
+      and Membership Rewards program terms.
+
 rules:
   - slug: american-express-gold-card__base_earn
     ruleName: Base earn (1 MR per HK$5)

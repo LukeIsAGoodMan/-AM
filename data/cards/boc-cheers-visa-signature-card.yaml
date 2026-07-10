@@ -55,4 +55,14 @@ sources:
       P9-style multi-source pull. /boc-cheers/ covers both Visa Infinite
       and Visa Signature variants; treated as Signature's competitor source.
 
+  - slug: boc-cheers-visa-signature-card-official-pdf-tc
+    sourceType: official_pdf_tc
+    sourcePriority: 1
+    title: BOC Cheers Card — Promotion Offers Terms & Conditions PDF
+    url: https://www.bochk.com/dam/boccreditcard/cheers_TnC_EN.pdf
+    language: en
+    status: active
+    notes: Day 2 audit fix — official page was SPA-only (34 chars). PDF T&C
+      is authoritative source for reward rates + caps.
+
 rules: []
