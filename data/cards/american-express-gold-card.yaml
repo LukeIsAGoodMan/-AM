@@ -56,4 +56,42 @@ sources:
       page; substituted the AE-hub comparison page which covers Gold
       alongside Platinum / Explorer / etc.
 
-rules: []
+rules:
+  - slug: american-express-gold-card__base_earn
+    ruleName: Base earn (1 MR per HK$5)
+    ruleType: base_earn
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 5
+      currencySlug: amex_membership_rewards
+    rewardCurrencySlug: amex_membership_rewards
+    sourceSlug: american-express-gold-card-official-page
+    confidenceScore: 0.75
+    priority: 100
+    notes: |
+      Hand-curated post-P17 audit. Amex Gold real T&C: 1 Membership Rewards
+      point per HK$5 general spend. Was 0 rules before because the xchk
+      base_earn group had perHkd=1 (LLM misread), and got sidelined as
+      conflict. This yaml rule reflects the real card baseline.
+
+  - slug: american-express-gold-card__dining_local_bonus
+    ruleName: Dining local 2x (2 MR per HK$5)
+    ruleType: category_bonus
+    status: approved
+    rewardFormula:
+      type: points_per_hkd
+      points: 2
+      perHkd: 5
+      currencySlug: amex_membership_rewards
+    rewardCurrencySlug: amex_membership_rewards
+    categorySlug: dining_local
+    stackingPolicy: replaces_base
+    sourceSlug: american-express-gold-card-official-page
+    confidenceScore: 0.7
+    priority: 200
+    notes: |
+      Amex Gold marketing points to "2x on dining" as the flagship benefit.
+      replaces_base + priority 200 so base_earn iterates first, then this
+      replaces it on dining_local. Effective 2 MR per HK$5 = HK$2.5/point.

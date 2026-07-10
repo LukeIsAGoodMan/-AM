@@ -525,15 +525,21 @@ async function syncRule(
     // P17 (D23): YAML still declares a single `cap:` object. Persist it
     // as a one-element caps[] jsonb. Multi-cap YAML rules are not modelled
     // yet — curators can extend when needed. For xchk__ rules the
-    // materializer writes N caps directly.
+    // materializer writes N caps directly. Null fields are stripped so
+    // the shape matches the migration-0013 canonical form (jsonb_strip_nulls),
+    // otherwise valuesEqual sees a spurious rewardAmount:null → economic diff.
     caps: yamlRule.cap
       ? [
           {
             usageKey: yamlRule.slug,
             basis: yamlRule.cap.basis,
             period: yamlRule.cap.period,
-            amountHkd: yamlRule.cap.amountHkd ?? null,
-            rewardAmount: yamlRule.cap.rewardAmount ?? null,
+            ...(yamlRule.cap.amountHkd != null
+              ? { amountHkd: yamlRule.cap.amountHkd }
+              : {}),
+            ...(yamlRule.cap.rewardAmount != null
+              ? { rewardAmount: yamlRule.cap.rewardAmount }
+              : {}),
           },
         ]
       : [],

@@ -70,9 +70,9 @@ rules:
     priority: 100
 
   - slug: standard-chartered-cathay-mastercard__overseas_bonus
-    ruleName: Overseas bonus (additive HK$5 = 1 mile)
+    ruleName: Overseas bonus (additive HK$5 = 1 mile) — SUPERSEDED
     ruleType: overseas_bonus
-    status: approved
+    status: archived
     rewardFormula:
       type: points_per_hkd
       points: 1
@@ -85,8 +85,31 @@ rules:
     confidenceScore: 0.65
     priority: 90
     notes: |
-      M9 estimate — Cathay co-brand cards typically double up overseas
-      to effective HK$2.5 = 1 mile. Verify with T&C in Phase 2.
+      Superseded by standard-chartered-cathay-mastercard__overseas_bonus_v2
+      during P17 audit fix. Was modelled as 2x (HK$2.5/mile) but real T&C
+      is 5x (HK$1/mile).
+
+  - slug: standard-chartered-cathay-mastercard__overseas_bonus_v2
+    ruleName: Overseas 5x (HK$1 = 1 mile)
+    ruleType: overseas_bonus
+    status: approved
+    supersedesSlug: standard-chartered-cathay-mastercard__overseas_bonus
+    rewardFormula:
+      type: points_per_hkd
+      points: 1
+      perHkd: 1
+      currencySlug: asia_miles
+    rewardCurrencySlug: asia_miles
+    isOverseas: true
+    stackingPolicy: replaces_base
+    sourceSlug: standard-chartered-cathay-mastercard-official-page
+    confidenceScore: 0.85
+    priority: 200
+    notes: |
+      P17-audit fix. Was modelled as base + additive-same-rate (HK$5=1mile
+      + HK$5=1mile stacked → effective HK$2.5/mile). Real SC Cathay T&C is
+      5x on overseas = HK$1/mile. replaces_base delivers HK$1 directly
+      without double-counting base.
 
   - slug: standard-chartered-cathay-mastercard__tax_exclusion
     ruleName: Tax / government — bonus excluded

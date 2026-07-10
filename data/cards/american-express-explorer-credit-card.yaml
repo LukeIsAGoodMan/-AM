@@ -70,9 +70,9 @@ rules:
     priority: 100
 
   - slug: american-express-explorer-credit-card__overseas_bonus
-    ruleName: Overseas bonus (additive HK$5 = 1 MR)
+    ruleName: Overseas bonus (additive HK$5 = 1 MR) — SUPERSEDED
     ruleType: overseas_bonus
-    status: approved
+    status: archived
     rewardFormula:
       type: points_per_hkd
       points: 1
@@ -85,8 +85,30 @@ rules:
     confidenceScore: 0.7
     priority: 90
     notes: |
-      Stacks with base for effective HK$2.5 = 1 MR overseas. Real card may use
-      different rate — verify in Phase 2.
+      Superseded by american-express-explorer-credit-card__overseas_bonus_v2
+      during P17 audit fix. Was 2x (HK$2.5/point) but real T&C is 3x
+      (3 MR per HK$5).
+
+  - slug: american-express-explorer-credit-card__overseas_bonus_v2
+    ruleName: Overseas 3x (3 MR per HK$5)
+    ruleType: overseas_bonus
+    status: approved
+    supersedesSlug: american-express-explorer-credit-card__overseas_bonus
+    rewardFormula:
+      type: points_per_hkd
+      points: 3
+      perHkd: 5
+      currencySlug: amex_membership_rewards
+    rewardCurrencySlug: amex_membership_rewards
+    isOverseas: true
+    stackingPolicy: replaces_base
+    sourceSlug: american-express-explorer-credit-card-official-page
+    confidenceScore: 0.85
+    priority: 200
+    notes: |
+      P17-audit fix. Real T&C: 3x MR on overseas = 3 points per HK$5 =
+      HK$1.67/point. Was modelled as base + additive-same-rate (effective
+      2x = HK$2.5/point). replaces_base delivers 3x directly.
 
   - slug: american-express-explorer-credit-card__tax_exclusion
     ruleName: Tax / government — bonus excluded

@@ -22,3 +22,13 @@ currencies:
     valuationNote: |
       1 MR point ≈ HKD 0.04 — uses Asia Miles transfer ratio (1500 MR → 540 miles
       ≈ 0.036 × 1.5). Phase 2 will refine after pulling actual transfer charts.
+
+  - slug: avios
+    nameEn: British Airways Avios
+    nameZh: 英航 Avios
+    type: miles
+    baseValueHkd: 0.10
+    valuationNote: |
+      1 Avios ≈ HKD 0.10 — comparable to Asia Miles for HK-focused redemptions
+      (short-haul BA / Qatar / Iberia partners). Added post-P17 audit to unblock
+      Citi Prestige xchk groups that were D19-sidelined.
