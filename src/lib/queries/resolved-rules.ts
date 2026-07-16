@@ -47,6 +47,9 @@ export async function loadResolvedRulesForCard(
       and(
         eq(rewardRules.cardId, card[0].id),
         eq(rewardRules.status, "approved"),
+        // P18 (D28): candidate / alt-mode / rejected rules are visible in
+        // /rules but must NOT earn in the calculator.
+        eq(rewardRules.isActiveForCalculator, true),
       ),
     )
 
@@ -80,7 +83,11 @@ export async function loadResolvedRulesForAllActiveCards(): Promise<
       .leftJoin(categories, eq(rewardRules.categoryId, categories.id))
       .leftJoin(rewardCurrencies, eq(rewardRules.rewardCurrencyId, rewardCurrencies.id))
       .where(
-        and(eq(rewardRules.cardId, c.id), eq(rewardRules.status, "approved")),
+        and(
+          eq(rewardRules.cardId, c.id),
+          eq(rewardRules.status, "approved"),
+          eq(rewardRules.isActiveForCalculator, true),
+        ),
       )
     out.push({
       cardId: c.id,

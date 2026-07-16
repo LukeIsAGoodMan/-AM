@@ -10,9 +10,13 @@ import {
 import {
   crossCheckGroups,
   rewardRuleSources,
+  reviewTasks,
   sourceClaims,
 } from "@/db/schema/extraction"
 import { stripFormulaSuffix } from "@/lib/extraction/aggregator"
+import { decideEarnRateGate } from "@/lib/extraction/earn-rate-gates"
+import { writeAnnualFee } from "@/lib/extraction/annual-fee-writer"
+import type { PublicationState } from "@/lib/publication"
 
 // P7 — materialize an approved cross_check_group into a reward_rule (+
 // reward_rule_sources rows for every supporting source).
@@ -53,12 +57,30 @@ export type MaterializeOutcome =
       ruleType: string
       capStitched: boolean
       supportingSourceCount: number
+      // P18 (D28): the authority the rule was published under + whether it
+      // earns in the calculator. Candidates (§3D) land inactive.
+      publishAuthority: PublicationState
+      isActiveForCalculator: boolean
     }
   | {
       kind: "skipped"
       groupId: string
       reason: string
       existingRuleId?: string
+    }
+  | {
+      // P18 (§3E): annual_fee groups update cards.annual_fee_hkd, not a
+      // reward_rule — reported with the before/after for the audit.
+      kind: "annual_fee"
+      groupId: string
+      cardId: string
+      updated: boolean
+      oldValueHkd: number | null
+      newValueHkd: number | null
+      authority: string
+      reason: string
+      retainedConflictClaimIds: string[]
+      waiverClaimIds: string[]
     }
   | {
       kind: "failed"
@@ -87,6 +109,7 @@ export type MaterializeSummary = {
 
 export async function materializeGroup(
   groupId: string,
+  opts: { dryRun?: boolean } = {},
 ): Promise<MaterializeOutcome> {
   try {
     const group = (
@@ -97,7 +120,7 @@ export async function materializeGroup(
         .limit(1)
     )[0]
     if (!group) return { kind: "failed", groupId, error: "group not found" }
-    return await materializeOneInternal(group)
+    return await materializeOneInternal(group, opts)
   } catch (err) {
     return { kind: "failed", groupId, error: (err as Error).message }
   }
@@ -109,6 +132,7 @@ export async function materializeGroup(
 
 export async function materializeApprovedGroups(
   scope: MaterializeScope,
+  opts: { dryRun?: boolean } = {},
 ): Promise<MaterializeSummary> {
   const conditions: SQL[] = [
     // Eligibility: not yet materialized, has a canonical reading, verdict
@@ -149,9 +173,11 @@ export async function materializeApprovedGroups(
     outcomes: [],
   }
   for (const g of groups) {
-    const outcome = await materializeOneInternal(g)
+    const outcome = await materializeOneInternal(g, opts)
     summary.outcomes.push(outcome)
     if (outcome.kind === "created") summary.created += 1
+    else if (outcome.kind === "annual_fee")
+      outcome.updated ? (summary.created += 1) : (summary.skipped += 1)
     else if (outcome.kind === "skipped") summary.skipped += 1
     else summary.failed += 1
   }
@@ -166,6 +192,7 @@ type LoadedGroup = typeof crossCheckGroups.$inferSelect
 
 async function materializeOneInternal(
   group: LoadedGroup,
+  opts: { dryRun?: boolean } = {},
 ): Promise<MaterializeOutcome> {
   if (group.approvedRuleId) {
     return {
@@ -194,6 +221,24 @@ async function materializeOneInternal(
       kind: "skipped",
       groupId: group.id,
       reason: `claim_type '${group.claimType}' not supported by P7 (see materializer doc)`,
+    }
+  }
+
+  // P18 (§3E): annual_fee updates cards.annual_fee_hkd through the authority
+  // policy, not a reward_rule. Route it to its own writer.
+  if (group.claimType === "annual_fee") {
+    const res = await writeAnnualFee(group, { dryRun: opts.dryRun })
+    return {
+      kind: "annual_fee",
+      groupId: group.id,
+      cardId: res.cardId,
+      updated: res.updated,
+      oldValueHkd: res.oldValueHkd,
+      newValueHkd: res.newValueHkd,
+      authority: res.authority,
+      reason: res.reason,
+      retainedConflictClaimIds: res.retainedConflictClaimIds,
+      waiverClaimIds: res.waiverClaimIds,
     }
   }
 
@@ -334,6 +379,63 @@ async function materializeOneInternal(
     }
   }
 
+  // P18 (§3C/§3D): gate earn_rate before writing. Correct grouping does NOT
+  // authorize publication — a category rate inferred from inclusion language
+  // is blocked (review only); a single-source alternate reward mode lands as
+  // an INACTIVE candidate. Exclusions keep their auto behavior (§7).
+  let publishAuthority: PublicationState = "auto"
+  let isActiveForCalculator = true
+  let candidateReason: string | null = null
+  if (group.claimType === "earn_rate") {
+    const gate = await decideEarnRateGate({
+      cardId: group.cardId,
+      payload,
+      rewardFormulaType,
+      supports: supports.map((s) => ({
+        claimId: s.claimId,
+        sourceId: s.sourceId,
+        sourcePriority: s.sourcePriority,
+      })),
+    })
+    if (gate.action === "block") {
+      if (!opts.dryRun) {
+        await ensureGateReviewTask({
+          group,
+          taskType: "inferred_category_review",
+          priority: "high",
+          title: `Inferred-category rule blocked — reject or reclassify`,
+          description: gate.reason,
+        })
+      }
+      return {
+        kind: "skipped",
+        groupId: group.id,
+        reason: `inferred-category gate blocked: ${gate.reason}`,
+      }
+    }
+    if (gate.action === "candidate") {
+      publishAuthority = "candidate"
+      isActiveForCalculator = false
+      candidateReason = gate.reason
+    }
+  }
+
+  // Dry-run: report the would-be rule (incl. its publication authority)
+  // without touching the DB. The canary CLI defaults to dry-run.
+  if (opts.dryRun) {
+    return {
+      kind: "created",
+      groupId: group.id,
+      ruleId: "(dry-run)",
+      ruleSlug,
+      ruleType,
+      capStitched: caps.length > 0,
+      supportingSourceCount: new Set(supports.map((s) => s.sourceId)).size,
+      publishAuthority,
+      isActiveForCalculator,
+    }
+  }
+
   // Atomic: insert rule + insert join rows + set group.approvedRuleId.
   // Single transaction so a mid-flight failure leaves no half-materialized
   // state (group pointing at a non-existent rule, etc.).
@@ -346,6 +448,8 @@ async function materializeOneInternal(
         ruleName,
         ruleType,
         status: "approved",
+        publishAuthority,
+        isActiveForCalculator,
         rewardFormulaType,
         rewardFormulaPayload: formulaPayload,
         rewardCurrencyId: currencyId,
@@ -363,7 +467,7 @@ async function materializeOneInternal(
         })),
         confidenceScore: Number(group.aggregateConfidence).toFixed(3),
         sourceId: primary.sourceId,
-        notes: `Materialized from cross_check_group ${group.id} (verdict=${group.status}, ${supports.length} supporting source${supports.length === 1 ? "" : "s"}).`,
+        notes: `Materialized from cross_check_group ${group.id} (verdict=${group.status}, ${supports.length} supporting source${supports.length === 1 ? "" : "s"}${candidateReason ? "; CANDIDATE: " + candidateReason : ""}).`,
       })
       .returning({ id: rewardRules.id })
 
@@ -398,6 +502,18 @@ async function materializeOneInternal(
     return newRuleId
   })
 
+  // §3D: a candidate alternate mode gets a review task so a human can verify
+  // or approve it before it goes active.
+  if (candidateReason) {
+    await ensureGateReviewTask({
+      group,
+      taskType: "alt_mode_candidate_review",
+      priority: "normal",
+      title: "Alternate reward mode candidate — verify before activating",
+      description: candidateReason,
+    })
+  }
+
   return {
     kind: "created",
     groupId: group.id,
@@ -406,6 +522,8 @@ async function materializeOneInternal(
     ruleType,
     capStitched: caps.length > 0,
     supportingSourceCount: new Set(supports.map((s) => s.sourceId)).size,
+    publishAuthority,
+    isActiveForCalculator,
   }
 }
 
@@ -414,7 +532,47 @@ async function materializeOneInternal(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function supportsP7(claimType: string): boolean {
-  return claimType === "earn_rate" || claimType === "exclusion"
+  // P18 (§3E): annual_fee now materializes (into cards.annual_fee_hkd via the
+  // authority policy). welcome_offer / category_definition / eligibility / cap
+  // still skip — Stage 2 owns welcome offers; caps stitch onto earn_rate.
+  return (
+    claimType === "earn_rate" ||
+    claimType === "exclusion" ||
+    claimType === "annual_fee"
+  )
+}
+
+// P18: create a gate-generated review task (inferred-category block or
+// alt-mode candidate), guarded so idempotent re-runs don't spam the queue.
+async function ensureGateReviewTask(args: {
+  group: LoadedGroup
+  taskType: string
+  priority: "normal" | "high"
+  title: string
+  description: string
+}): Promise<void> {
+  const existing = (
+    await db
+      .select({ id: reviewTasks.id })
+      .from(reviewTasks)
+      .where(
+        and(
+          eq(reviewTasks.subjectGroupId, args.group.id),
+          eq(reviewTasks.taskType, args.taskType),
+          inArray(reviewTasks.status, ["open", "in_progress"]),
+        ),
+      )
+      .limit(1)
+  )[0]
+  if (existing) return
+  await db.insert(reviewTasks).values({
+    taskType: args.taskType,
+    priority: args.priority,
+    cardId: args.group.cardId,
+    subjectGroupId: args.group.id,
+    title: args.title,
+    description: args.description,
+  })
 }
 
 type SupportingClaim = {

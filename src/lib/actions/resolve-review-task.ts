@@ -151,9 +151,11 @@ export async function resolveReviewTask(
       const matSuffix = materialized
         ? materialized.kind === "created"
           ? ` Rule '${materialized.ruleSlug}' (${materialized.ruleType}) created.`
-          : materialized.kind === "skipped"
-            ? ` Materialization skipped: ${materialized.reason}.`
-            : ` Materialization failed: ${materialized.error}.`
+          : materialized.kind === "annual_fee"
+            ? ` Annual fee ${materialized.updated ? `published HK$${materialized.newValueHkd} (${materialized.authority})` : "unchanged"}.`
+            : materialized.kind === "skipped"
+              ? ` Materialization skipped: ${materialized.reason}.`
+              : ` Materialization failed: ${materialized.error}.`
         : ""
       message =
         `Approved. ${supportingIds.length} claim(s) approved, ${contradictingIds.length} rejected.` +

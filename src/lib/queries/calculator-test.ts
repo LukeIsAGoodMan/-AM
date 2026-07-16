@@ -92,6 +92,8 @@ export async function loadCalculatorTestData(): Promise<CalcTestData> {
           and(
             inArray(rewardRules.cardId, cardIds),
             eq(rewardRules.status, "approved"),
+            // P18 (D28): exclude candidate / inactive rules from the calculator.
+            eq(rewardRules.isActiveForCalculator, true),
           ),
         )
 

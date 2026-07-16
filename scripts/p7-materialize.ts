@@ -84,6 +84,9 @@ function formatOutcome(o: MaterializeOutcome): string {
     const cap = o.capStitched ? " · +cap" : ""
     return `${idx} ✓ created  rule='${o.ruleSlug}' (${o.ruleType}) · ${o.supportingSourceCount} src${cap}`
   }
+  if (o.kind === "annual_fee") {
+    return `${idx} ${o.updated ? "✓ fee" : "⊘ fee"}     ${o.updated ? `${o.oldValueHkd ?? "∅"}→${o.newValueHkd} (${o.authority})` : "unchanged"} · ${o.reason}`
+  }
   if (o.kind === "skipped") {
     return `${idx} ⊘ skipped  ${o.reason}`
   }
@@ -99,25 +102,19 @@ async function main() {
     console.error(USAGE)
     process.exit(1)
   }
-  if (args.dryRun) {
-    console.error(
-      "--dry-run is not yet implemented; running live. (See P7 CLI header.)",
-    )
-  }
-
   const scope: MaterializeScope = {
     cardSlugs: args.cardSlugs.length > 0 ? args.cardSlugs : undefined,
     groupIds: args.groupIds.length > 0 ? args.groupIds : undefined,
   }
 
   console.log("─".repeat(80))
-  console.log("▸ P7 materializer — group → reward_rule")
+  console.log(`▸ P7 materializer — group → reward_rule${args.dryRun ? " (DRY-RUN)" : ""}`)
   if (scope.cardSlugs) console.log(`  card slugs: ${scope.cardSlugs.join(", ")}`)
   if (scope.groupIds) console.log(`  group ids:  ${scope.groupIds.join(", ")}`)
   console.log("─".repeat(80))
 
   const startedAt = Date.now()
-  const summary = await materializeApprovedGroups(scope)
+  const summary = await materializeApprovedGroups(scope, { dryRun: args.dryRun })
   const wallMs = Date.now() - startedAt
 
   for (const o of summary.outcomes) {

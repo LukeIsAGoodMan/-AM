@@ -184,7 +184,10 @@ describe("P7 materializer — single-group entry point", () => {
     }
   })
 
-  it("skips unsupported claim_types (annual_fee → cards table, not reward_rule)", async () => {
+  it("P18 §3E: annual_fee materializes into cards (dry-run computes, writes nothing)", async () => {
+    // annual_fee used to skip as "not supported by P7"; it now routes to the
+    // authority-policy writer. Exercise it in DRY-RUN so we never mutate the
+    // non-canary hsbc-red card from a test.
     const hsbcRedId = (
       await db.select({ id: cards.id }).from(cards).where(eq(cards.slug, "hsbc-red"))
     )[0]!.id
@@ -194,10 +197,19 @@ describe("P7 materializer — single-group entry point", () => {
     ).find((g) => g.claimType === "annual_fee")
     expect(annualFee).toBeDefined()
 
-    const outcome = await materializeGroup(annualFee!.id)
-    expect(outcome.kind).toBe("skipped")
-    if (outcome.kind !== "skipped") return
-    expect(outcome.reason).toContain("not supported by P7")
+    const feeBefore = (
+      await db.select({ fee: cards.annualFeeHkd }).from(cards).where(eq(cards.id, hsbcRedId))
+    )[0]!.fee
+
+    const outcome = await materializeGroup(annualFee!.id, { dryRun: true })
+    expect(outcome.kind).toBe("annual_fee")
+    if (outcome.kind !== "annual_fee") return
+    expect(outcome.updated).toBe(false) // dry-run never writes
+
+    const feeAfter = (
+      await db.select({ fee: cards.annualFeeHkd }).from(cards).where(eq(cards.id, hsbcRedId))
+    )[0]!.fee
+    expect(feeAfter).toBe(feeBefore)
   })
 
   it("returns failed for unknown group id", async () => {
