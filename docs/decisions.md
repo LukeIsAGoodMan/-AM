@@ -401,6 +401,18 @@ At the calculator side, `mapRow` in the three query-loaders reads `usageKey: r.c
 
 **Knock-on**: Blue Cash canary — the HK$6=1 mile rule lands as an inactive `miles_transfer` candidate with a review task; the calculator continues to use the 1.2% cashback base for applicable transactions. No UI mode toggle is added (explicitly deferred by §3D).
 
+## D25 (P18 Stage 1A) — Annual-fee authority policy: classify, then provisionally publish
+
+**Decision**: `src/lib/extraction/annual-fee-classify.ts` (pure) classifies every annual_fee claim on three axes — `cardholderType` (primary/supplementary/unknown), `feeKind` (standard_annual_fee/first_year_fee/fee_waiver/membership_fee/unknown), `effectiveScope` (current/historical/unknown) — then `evaluateAnnualFeePublication` applies a three-tier policy: (1) a current official primary standard fee publishes provisionally (`provisional_pending_review`, or `provisional_conflict_pending_review` if a conflicting standard claim remains); (2) two independent third parties agreeing with no official → provisional third-party; (3) no authority → leave the existing value untouched, review only. Only `primary + standard_annual_fee + current` may set `cards.annual_fee_hkd`. A HK$0 first-year claim is a WAIVER, never a conflicting standard fee. Conflicting standard claims (the HK$9,500 outlier) are PRESERVED, never auto-rejected.
+
+**Why**:
+- **"Don't take the first positive number" (§3E)**: the Explorer corpus has HK$2,200 (official + many third parties), HK$0 (first-year waiver interpretations), and HK$9,500 (`年費$9,500無得豁免`, likely a different Amex product). Blindly picking a positive number could land 9,500; treating the 0s as standard fees would manufacture a permanent conflict. Classification separates these cleanly: the 0s are `first_year_fee` waivers (out of the standard set), 9,500 is a `standard_annual_fee` outlier that conflicts and is retained for investigation, 2,200 official is the one that sets the value.
+- **cardholderType defaults to `unknown`, not `primary`**: value-setting requires an EXPLICIT primary marker (Amex's "Basic Card", 主卡/基本卡), so an ambiguous bare "annual fee HK$X" never over-writes the primary fee. Conflict PRESERVATION, though, includes primary+unknown standard claims — so the 9,500 (unlabelled cardholder) is still retained as an outlier even though it can't set the value.
+- **"Annual Membership fee" is the annual fee, not a membership_fee**: Amex names its annual fee "Annual Membership fee". `membership_fee` is reserved for a one-time joining fee with no annual/年費/每年 word — otherwise a positive amount is `standard_annual_fee`. A `waived`/`豁免` word with a non-zero amount is a standard fee under a waiver CONDITION, not a HK$0 waiver.
+- **Provisional, never silently authoritative**: even a clean official match publishes as `provisional_pending_review` (not `auto`) with a review task, honoring §3G/D28 — the new authority policy hasn't been human-confirmed for this card yet. Conflict escalates to `provisional_conflict_pending_review` + `needsReview`.
+
+**Knock-on**: the annual-fee writer (materializer split, subtask 6) consumes this decision: on `updateCard` it writes `cards.annual_fee_hkd` + `cards.annual_fee_publish_authority` and creates a review task; retained conflict claims + waiver claims stay `pending_review` with their provenance. Explorer canary: HK$1,800 seed → HK$2,200 `provisional_conflict_pending_review`, HK$9,500 preserved + review-tasked, HK$0 first-year kept as waivers. No welcome-offer materialization (§7).
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:
