@@ -171,6 +171,12 @@ export const cards = pgTable("cards", {
   network: text("network"),
   cardLevel: text("card_level"),
   annualFeeHkd: numeric("annual_fee_hkd", { precision: 12, scale: 2 }),
+  // P18 (D28): authority state for annual_fee_hkd. Seed values default to
+  // 'legacy_unverified'; only §3E's primary+standard+current authority logic
+  // promotes them. See src/lib/publication.ts for the state list.
+  annualFeePublishAuthority: text("annual_fee_publish_authority")
+    .default("legacy_unverified")
+    .notNull(),
   status: text("status").default("draft").notNull(),
   officialUrl: text("official_url"),
   // Auto-populated by the syncer when public/card-images/<slug>.<ext> exists
@@ -192,7 +198,12 @@ export const cards = pgTable("cards", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-})
+}, (table) => [
+  check(
+    "cards_annual_fee_publish_authority_check",
+    sql`${table.annualFeePublishAuthority} IN ('legacy_unverified','auto','provisional_pending_review','provisional_conflict_pending_review','candidate','reviewer_approved','reviewer_rejected')`,
+  ),
+])
 
 export const rewardRules = pgTable("reward_rules", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -203,6 +214,18 @@ export const rewardRules = pgTable("reward_rules", {
   ruleName: text("rule_name").notNull(),
   ruleType: text("rule_type").notNull(),
   status: text("status").default("draft").notNull(),
+
+  // P18 (D28): controlled publication states. 'legacy_unverified' by default
+  // (backfilled by migration 0014 — NOT 'auto'); a Stage 1A writer sets a
+  // stronger authority when it materializes. is_active_for_calculator is the
+  // hard gate the calculator query loaders filter on: candidate / alt-mode /
+  // rejected rules land false so they stay visible in /rules but never earn.
+  publishAuthority: text("publish_authority")
+    .default("legacy_unverified")
+    .notNull(),
+  isActiveForCalculator: boolean("is_active_for_calculator")
+    .default(true)
+    .notNull(),
 
   // Reward shape
   rewardFormulaType: text("reward_formula_type").notNull(),
@@ -289,6 +312,11 @@ export const rewardRules = pgTable("reward_rules", {
   check(
     "reward_rules_approved_must_have_source",
     sql`${table.status} <> 'approved' OR ${table.sourceId} IS NOT NULL`,
+  ),
+  // P18 (D28): publish_authority must be one of the known states.
+  check(
+    "reward_rules_publish_authority_check",
+    sql`${table.publishAuthority} IN ('legacy_unverified','auto','provisional_pending_review','provisional_conflict_pending_review','candidate','reviewer_approved','reviewer_rejected')`,
   ),
 ])
 

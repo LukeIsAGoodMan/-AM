@@ -119,6 +119,9 @@ export const sourceClaims = pgTable("source_claims", {
   reviewerNote: text("reviewer_note"),
   // No FK — user table doesn't exist yet (Layer 7 reserved). Store the id.
   reviewedBy: uuid("reviewed_by"),
+  // P18 (§3C): reject_claim + gate-created tasks record the reviewer email
+  // alongside the reason (reviewer_note). Durable identity is Stage 1B.
+  reviewerEmail: text("reviewer_email"),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
@@ -216,6 +219,8 @@ export const reviewTasks = pgTable("review_tasks", {
   description: text("description"),
   status: text("status").default("open").notNull(), // open / in_progress / resolved / dismissed
   resolvedBy: uuid("resolved_by"), // no FK, see source_claims.reviewedBy note
+  // P18 (§3C): email of the reviewer who resolved the task.
+  reviewerEmail: text("reviewer_email"),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   resolutionNote: text("resolution_note"),
   createdAt: timestamp("created_at", { withTimezone: true })

@@ -349,6 +349,21 @@ At the calculator side, `mapRow` in the three query-loaders reads `usageKey: r.c
 
 ---
 
+## D28 (P18 Stage 1A) — Controlled publication states; legacy rows default `legacy_unverified`, never `auto`
+
+**Decision**: Migration 0014 adds `reward_rules.publish_authority` (text, CHECK-constrained to seven states) + `reward_rules.is_active_for_calculator` (boolean) + `cards.annual_fee_publish_authority` (text, same CHECK). Every existing row backfills to `legacy_unverified` (via column default), NOT `auto`. `is_active_for_calculator` backfills `true` so legacy rules stay calculator-live for backward compat. The seven states (`legacy_unverified`, `auto`, `provisional_pending_review`, `provisional_conflict_pending_review`, `candidate`, `reviewer_approved`, `reviewer_rejected`) + the `CALCULATOR_ACTIVE_STATES` intent set live in `src/lib/publication.ts`. Migration also adds `source_claims.reviewer_email` + `review_tasks.reviewer_email` (no new tables — Stage 1B owns the durable override/identity layer).
+
+**Why**:
+- **The spec's hardest honesty constraint (§3G, §12)**: "Do NOT migrate historical records to `auto` by default. Existing legacy spreadsheet values and historical materialized rules have not passed the new authority policy." An `auto` label would falsely assert the row was machine-verified under Stage 1A rules. `legacy_unverified` says exactly what's true: it predates the authority policy and is grandfathered in, not endorsed.
+- **`is_active_for_calculator` is a separate gate from `status`**: the calculator already filters `status='approved'`. Overloading `status` for "approved but not calculator-live" (candidates, single-source alt modes per §3D) would break the /rules and /review queries that key off `status`. A dedicated boolean lets a candidate rule be `status='approved'` + visible in /rules + `is_active_for_calculator=false` → never earns. Default `true` means zero behaviour change for the 202 existing rows.
+- **CHECK over a Postgres enum**: a text column + CHECK is reversible without a type migration when Stage 1B/2/3 add states. Drizzle mirrors the CHECK in `catalog.ts` so schema drift is caught by `db:push --strict` and the shape is greppable in one place.
+- **reviewer_email column, not a table**: §3C requires storing "a reason and reviewer email" on the reject_claim path. The reason reuses existing `reviewer_note` / `resolution_note`; only the email was missing (`reviewed_by` is a uuid for a user table that doesn't exist yet — Layer 7 reserved). One nullable column each is the minimum that satisfies the spec without pre-building Stage 1B's override tables.
+
+**Knock-on**:
+- Every Stage 1A writer (earn-rate, annual-fee) sets `publish_authority` + `is_active_for_calculator` explicitly per §3C–§3G authority logic. `src/lib/publication.ts` is the single source of truth for the state list; adding a state means editing the array + both CHECK constraints (catalog.ts + migration).
+- The calculator query loaders (`queries/resolved-rules.ts`, `calculator-test.ts`, `projection-test.ts`) will gain a `is_active_for_calculator = true` filter once candidate rules exist in the corpus (wired in the materializer-split subtask). Until then, default `true` keeps every row live.
+- Test #9 (`src/lib/__tests__/publication.test.ts`) pins the column DEFAULT to `legacy_unverified` via `information_schema` — a stable invariant that survives the canary write (unlike an "all rows legacy" row-count assertion).
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:

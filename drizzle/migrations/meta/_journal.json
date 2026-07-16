@@ -99,6 +99,13 @@
       "when": 1783728000000,
       "tag": "0013_caps_jsonb",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784332800000,
+      "tag": "0014_publication_states",
+      "breakpoints": true
     }
   ]
 }
