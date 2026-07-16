@@ -18,7 +18,7 @@ import { z } from "zod"
 //   - Output is constrained via output_config.format JSON Schema so the
 //     model can't free-form drift; we still Zod-parse for belt-and-suspenders.
 
-export const PROMPT_VERSION = "p2-v3" as const
+export const PROMPT_VERSION = "p2-v4" as const
 
 // One claim type per row PRD §22.5 listed. Free-text earlier; constrained
 // here so the extractor can't invent a new type silently.
@@ -193,6 +193,8 @@ Emit exactly one entry per claim. Use the most specific type that fits.
 - **earn_rate** — A reward rate for a specific situation. e.g. "1.2% cashback on all spend", "4% online local", "HKD 8 per Asia Mile on overseas". Payload mirrors reward_formula_payload: { rewardFormulaType: 'simple_percent'|'points_per_hkd'|'tiered_percent'|'tiered_points', rate?, points?, perHkd?, currencySlug?, categorySlug?, isOnline?, isOverseas?, isForeignCurrency? }.
 
     **DO NOT emit as base_earn** if the rate is qualified by "as low as", "up to", "at rates from", "最高", "最低至", OR is gated by a list of merchant categories, OR only applies to specific channels (Octopus / merchant program / registered users). Marketing copy like "earn miles at a rate as low as HK$2 = 1 mile" describes the BEST category rate, not the base earn — the base is HK$8/mile or HK$15/mile in that example, and HK$2/mile only fires on the "designated everyday spend" list. If you can't tell what the true base rate is, emit the qualified rate as a category_bonus with the categorySlug set, and leave base_earn to a chunk that says something like "HK$8 = 1 mile on all other spend".
+
+    **DO NOT invent a category rate from inclusion / example language (p2-v4)**. When the text says a category is INCLUDED in the general rate — English "even X earns 1.2%", "including X", "such as", "for example", "X is also eligible", "as well"; Chinese "如…都有", "即使…都", "甚至", "包括", "連…都", "亦可", "均可" — that sentence is asserting the BASE rate also covers X, NOT a category-specific bonus. Example: "even insurance payments earn 1.2% cashback" (「如當面交付保險費用都有1.2%消費回贈」) means the 1.2% BASE covers insurance; it does NOT mean insurance is a special 1.2% category. Emit it as the base_earn (no categorySlug), OR skip it if a base_earn claim already exists in this chunk. ONLY emit a category_bonus with a categorySlug when the source EXPLICITLY limits a DIFFERENT rate to that category ("only for dining", "限於餐飲", "餐飲專享 5%"). A downstream deterministic gate double-checks this, but get it right at the source.
 - **cap** — A monetary or time-period cap on an earn_rate. e.g. "max HKD 100,000 per year spending", "up to HK$300 Fare Rebate per month". Payload: { amountHkd?, rewardAmount?, period: 'month'|'quarter'|'year'|'campaign', basis: 'spending'|'reward'|'transaction_count', categorySlug?, appliesTo?: string[], isOnline?, isOverseas?, isForeignCurrency? }.
 
     **CRITICAL (p2-v3)**: caps MUST carry the same gating fields as the earn_rate they belong to. If the T&C says "15% Fare Rebate on public transport, capped at HK$300/month reward", emit the cap with \`categorySlug: 'public_transport'\` — otherwise the downstream stitcher can't pair the cap with its rule and the calculator applies the 15% unbounded. If the cap gates multiple categories ("first HK$10,000 in airlines OR selected online travel merchants each quarter"), use \`appliesTo: ['travel_airline', 'travel_ota']\`. If the cap is truly card-wide with no category gate (rare — usually only "aggregate monthly reward cap of HK$X across all bonuses"), omit both fields — the stitcher will treat it as a card-level cap.

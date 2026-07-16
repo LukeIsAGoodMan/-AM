@@ -17,8 +17,16 @@ import {
 //   - User-message builder produces deterministic, cacheable output
 
 describe("P2 — prompt module invariants", () => {
-  it("prompt version is the stable 'p2-v3' constant", () => {
-    expect(PROMPT_VERSION).toBe("p2-v3")
+  it("prompt version is the stable 'p2-v4' constant", () => {
+    expect(PROMPT_VERSION).toBe("p2-v4")
+  })
+
+  it("SYSTEM_PROMPT teaches the p2-v4 anti-inclusion guard (§3C)", () => {
+    // "even insurance earns 1.2%" must NOT become an insurance category rate.
+    const p = SYSTEM_PROMPT.toLowerCase()
+    expect(p).toContain("even insurance")
+    expect(SYSTEM_PROMPT).toContain("如…都有")
+    expect(p).toContain("inclusion")
   })
 
   it("SYSTEM_PROMPT mentions every claim_type by name (taxonomy in sync with enum)", () => {

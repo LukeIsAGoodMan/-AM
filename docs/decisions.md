@@ -379,6 +379,28 @@ At the calculator side, `mapRow` in the three query-loaders reads `usageKey: r.c
 - **`stripFormulaSuffix`, `formulaDiscriminator`, `FORMULA_SEP` are exported** from aggregator.ts; the materializer imports `stripFormulaSuffix`. Any future reader of earn_rate key_dimensions must strip the suffix before comparing to a cap key.
 - Aggregator tests updated: earn_rate key expectations now include the formula suffix; two new pins for the cashback-vs-miles base split and the amex_points-vs-asia_miles currency split; the mixed-type test flipped to assert §3B numeric normalization.
 
+## D26 (P18 Stage 1A) — Inferred-category publication gate (deterministic EN+ZH inclusion check)
+
+**Decision**: A new pure module `src/lib/extraction/inferred-category-gate.ts` blocks auto-materialization of a category-specific earn-rate rule when ALL four §3C conditions hold: (1) single supporting source, (2) the source snippet uses inclusion/example language (EN: even, including, such as, for example, also eligible, as well · ZH: 如, 例如, 即使, 甚至, 包括, 連, 亦, 都有, 均可), (3) the claim's rate equals the card's base rate, (4) no explicit category-limiting language (EN: only for, exclusively, limited to · ZH: 只限, 限於, 專享 …). Prompt bumped to `p2-v4` with a matching anti-inclusion instruction. Blocked → preserve claim, create review task, don't materialize (wired in the materializer split, subtask 6).
+
+**Why**:
+- **Category inference can reverse the source's meaning (§3 problem #4)**: "even insurance payments earn 1.2% cashback" / 「如當面交付保險費用都有1.2%消費回贈」 asserts the 1.2% BASE covers insurance — it is NOT an `insurance = 1.2%` category bonus. Auto-publishing it creates a phantom category rule that double-earns or misranks. The Blue Cash mrmiles claim `6db31629` is the live instance.
+- **All four conditions, not any one**: inclusion language alone isn't enough (a real 5% dining rule might say "dining, such as restaurants"). The gate only fires when the language is inclusive AND the rate merely restates the base AND it's single-source AND nothing limits it to the category — the exact fingerprint of a misattributed base rate. Explicit limiting language ("only for dining") is a hard veto: it means the category rate is genuine.
+- **Deterministic, not a second LLM call**: the patterns are a fixed EN+ZH list; the check is a regex/substring scan of the already-stored `extracted_text_snippet`. Cheap, reproducible, auditable — the matched phrases are returned so the review task can show WHY it was gated. The p2-v4 prompt guard reduces how often the gate has to fire, but the gate is the deterministic backstop.
+
+**Knock-on**: the gate returns matched patterns + a reason string that becomes the review-task description and audit-diff line. Blue Cash canary: the insurance claim is blocked, review-tasked, and rejected via the new reject_claim action (D+subtask 7); no active `insurance = 1.2%` rule remains — only the 1.2% base, which already covers insurance.
+
+## D27 (P18 Stage 1A) — Alternate-reward-mode candidate gate (single-source alt formula → inactive candidate)
+
+**Decision**: `src/lib/extraction/alt-mode-gate.ts` decides whether an earn-rate group whose formula/currency differs from the card's primary reward mode should be force-gated to an INACTIVE candidate. Gate fires when the alt mode is single-source AND has no official source backing → materialize with `publish_authority='candidate'` + `is_active_for_calculator=false` + a review task (wired subtask 6). It also classifies the mode: default / selectable_reward / points_conversion / miles_transfer / promotional / third_party_interpretation.
+
+**Why**:
+- **Correct grouping ≠ authorization (§3D)**: D24 split Blue Cash's HK$6=1 Asia Mile into its own group. Without a gate, the materializer would now happily publish it as a second active rule, and the calculator would start awarding miles the card may not actually give through that channel. §3D is explicit: a single-source alternate mode is a *candidate*, kept out of the calculator until officially verified.
+- **Gate on (single-source ∧ ¬official), classify separately**: the gating predicate is deliberately narrow — a multi-source or officially-backed alt mode is NOT force-gated (it may earn publication through the normal authority path). The mode-kind classification is orthogonal metadata for the reviewer, derived from the reward currency + snippet keywords (miles currency → miles_transfer, "select/自選" → selectable_reward, promo/限時 → promotional).
+- **is_active_for_calculator, not status**: keeping the candidate at `status='approved'` but `is_active_for_calculator=false` lets it show in /rules with a candidate badge and full provenance, while the calculator's loaders (D28) skip it. This is why D28 added the boolean gate rather than overloading status.
+
+**Knock-on**: Blue Cash canary — the HK$6=1 mile rule lands as an inactive `miles_transfer` candidate with a review task; the calculator continues to use the 1.2% cashback base for applicable transactions. No UI mode toggle is added (explicitly deferred by §3D).
+
 ## How to add a decision
 
 When you make a load-bearing schema or architecture choice:
