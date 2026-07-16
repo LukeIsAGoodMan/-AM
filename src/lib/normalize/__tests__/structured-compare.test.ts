@@ -89,7 +89,7 @@ describe("§9.1 — structured comparison: object arrays (welcome components)", 
     expect(r.conflicts[0]?.reason).toBe("numeric")
   })
 
-  it("scalar array (exclusion scope) is order-insensitive; extra = enrichment", () => {
+  it("scalar array (exclusion scope) is order-insensitive; subset = enrichment", () => {
     expect(
       compareStructured({ appliesTo: ["dining", "travel"] }, { appliesTo: ["travel", "dining"] }).relation,
     ).toBe("equal")
@@ -99,5 +99,12 @@ describe("§9.1 — structured comparison: object arrays (welcome components)", 
     )
     expect(broader.relation).toBe("enrichment")
     expect(broader.supersetSide).toBe("b")
+  })
+
+  it("scalar array that DIVERGES (each side unique member) = conflict", () => {
+    // [a,b] vs [a,c] — b and c are distinct scope members, not a subset.
+    const r = compareStructured({ appliesTo: ["a", "b"] }, { appliesTo: ["a", "c"] })
+    expect(r.relation).toBe("conflict")
+    expect(r.conflicts[0]?.reason).toBe("array-component")
   })
 })

@@ -252,9 +252,13 @@ function walkArray(
   path: string,
   opts: CompareOptions,
 ): WalkResult {
-  // All-scalar arrays: order-insensitive multiset. Extra elements on either
-  // side are enrichment, never a conflict (an exclusion scope of [dining] vs
-  // [dining, hotel] is "one broader", not a contradiction).
+  // All-scalar arrays are treated as SETS (exclusion / cap scope), order-
+  // insensitive. A pure subset is enrichment (one source lists a broader
+  // scope — [dining] vs [dining, hotel]). A DIVERGENT pair, where each side
+  // carries a member the other lacks ([a, b] vs [a, c]), is a real
+  // discrepancy, not a component addition → conflict. (Object-component
+  // arrays are matched by identity in the branch below, where two distinct
+  // components are independent enrichment, not a conflict.)
   if (a.every(isScalar) && b.every(isScalar)) {
     const bCounts = new Map<string, number>()
     for (const v of b) bCounts.set(scalarKey(v), (bCounts.get(scalarKey(v)) ?? 0) + 1)
@@ -267,11 +271,10 @@ function walkArray(
     }
     let bExtra = 0
     for (const c of bCounts.values()) bExtra += c
-    return {
-      ...EMPTY,
-      aExtraComponents: aExtra,
-      bExtraComponents: bExtra,
+    if (aExtra > 0 && bExtra > 0) {
+      return conflict(path, a, b, "array-component")
     }
+    return { ...EMPTY, aExtraComponents: aExtra, bExtraComponents: bExtra }
   }
 
   // Object/mixed arrays: greedily match each a-element to the best unused

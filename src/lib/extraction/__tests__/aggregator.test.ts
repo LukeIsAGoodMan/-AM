@@ -31,16 +31,57 @@ describe("P4 — pure helpers", () => {
   })
 
   describe("computeKeyDimension", () => {
-    it("earn_rate with categorySlug → category_slug=X", () => {
+    it("earn_rate with categorySlug → category_slug=X|formula=... (§3A split)", () => {
       expect(
-        computeKeyDimension("earn_rate", { categorySlug: "online_local" }),
-      ).toBe("category_slug=online_local")
+        computeKeyDimension("earn_rate", {
+          categorySlug: "online_local",
+          rewardFormulaType: "simple_percent",
+        }),
+      ).toBe("category_slug=online_local|formula=simple_percent")
     })
 
-    it("earn_rate without categorySlug → rule_type=base_earn", () => {
-      expect(computeKeyDimension("earn_rate", { rate: 0.004 })).toBe(
-        "rule_type=base_earn",
-      )
+    it("earn_rate without categorySlug → rule_type=base_earn|formula=...", () => {
+      expect(
+        computeKeyDimension("earn_rate", {
+          rate: 0.004,
+          rewardFormulaType: "simple_percent",
+        }),
+      ).toBe("rule_type=base_earn|formula=simple_percent")
+    })
+
+    it("§3A — cashback base and miles base do NOT share a group", () => {
+      // The exact Blue Cash case: 1.2% cashback base vs HK$6=1 Asia Mile base.
+      const cashback = computeKeyDimension("earn_rate", {
+        rate: 0.012,
+        rewardFormulaType: "simple_percent",
+      })
+      const miles = computeKeyDimension("earn_rate", {
+        points: 1,
+        perHkd: 6,
+        currencySlug: "asia_miles",
+        rewardFormulaType: "points_per_hkd",
+      })
+      expect(cashback).toBe("rule_type=base_earn|formula=simple_percent")
+      expect(miles).toBe("rule_type=base_earn|formula=points_per_hkd:asia_miles")
+      expect(cashback).not.toBe(miles)
+    })
+
+    it("§3A — reward currency splits point modes (amex_points vs asia_miles)", () => {
+      const points = computeKeyDimension("earn_rate", {
+        categorySlug: "merchant_specific",
+        points: 5,
+        perHkd: 1,
+        currencySlug: "amex_points",
+        rewardFormulaType: "points_per_hkd",
+      })
+      const miles = computeKeyDimension("earn_rate", {
+        categorySlug: "merchant_specific",
+        points: 0.2778,
+        perHkd: 1,
+        currencySlug: "asia_miles",
+        rewardFormulaType: "points_per_hkd",
+      })
+      expect(points).not.toBe(miles)
     })
 
     it("cap with categorySlug → category_slug=X", () => {
@@ -138,8 +179,13 @@ describe("P4 — pure helpers", () => {
       expect(claimAgreesWith({}, { rate: 0.04 })).toBe(true)
     })
 
-    it("mixed types disagree (no auto-coerce)", () => {
-      expect(claimAgreesWith({ x: "1" }, { x: 1 })).toBe(false)
+    it("numeric representations normalize (§3B): '1' agrees with 1", () => {
+      // P18 §3B point 1 mandates numeric-representation normalization
+      // ("100000.00" == 100000). A numeric string now agrees with its number.
+      expect(claimAgreesWith({ x: "1" }, { x: 1 })).toBe(true)
+      expect(claimAgreesWith({ amountHkd: "100000.00" }, { amountHkd: 100000 })).toBe(true)
+      // A genuinely non-numeric string vs a number is still a real conflict.
+      expect(claimAgreesWith({ x: "online" }, { x: 5 })).toBe(false)
     })
 
     it("arrays compare order-insensitively", () => {

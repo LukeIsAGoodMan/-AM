@@ -12,6 +12,7 @@ import {
   rewardRuleSources,
   sourceClaims,
 } from "@/db/schema/extraction"
+import { stripFormulaSuffix } from "@/lib/extraction/aggregator"
 
 // P7 — materialize an approved cross_check_group into a reward_rule (+
 // reward_rule_sources rows for every supporting source).
@@ -612,6 +613,11 @@ async function loadMatchingCaps(
   const eligible = inArray(crossCheckGroups.status, ["agreed", "single_source"])
   const results: CapShape[] = []
 
+  // P18: earn_rate key_dimensions now carry a |formula=... suffix (§3A) but
+  // cap groups are still keyed by category only, so match against the bare
+  // category dimension. Identity on pre-P18 keys (no suffix).
+  const categoryDim = stripFormulaSuffix(earnRateKeyDimension)
+
   // (1) Exact match — per-rule usageKey (stays null, mapRow falls back to slug).
   const exact = (
     await db
@@ -621,7 +627,7 @@ async function loadMatchingCaps(
         and(
           eq(crossCheckGroups.cardId, cardId),
           eq(crossCheckGroups.claimType, "cap"),
-          eq(crossCheckGroups.keyDimension, earnRateKeyDimension),
+          eq(crossCheckGroups.keyDimension, categoryDim),
           eligible,
         ),
       )
@@ -637,8 +643,8 @@ async function loadMatchingCaps(
   }
 
   // (2) applies_to fan-out — only if no exact match. Shared xcap:id.
-  const categoryFromDim = earnRateKeyDimension.startsWith("category_slug=")
-    ? earnRateKeyDimension.slice("category_slug=".length)
+  const categoryFromDim = categoryDim.startsWith("category_slug=")
+    ? categoryDim.slice("category_slug=".length)
     : null
   if (!primaryLanded && categoryFromDim) {
     const fanoutCandidates = await db

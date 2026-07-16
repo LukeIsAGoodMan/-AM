@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm"
 import { db } from "@/db/client"
+import { structuresAgree } from "@/lib/normalize"
 import { cards, sourceDocuments } from "@/db/schema/catalog"
 import {
   crossCheckGroups,
@@ -64,11 +65,9 @@ function priorityWeight(priority: number): number {
   return SOURCE_PRIORITY_WEIGHTS[priority] ?? 0.5
 }
 
-// Numeric tolerance — values within ±5% of each other count as agreeing.
-// Below the absolute floor we require exact equality (a "5% of 0" check
-// would always pass otherwise).
-const NUMERIC_RELATIVE_TOLERANCE = 0.05
-const NUMERIC_ABSOLUTE_FLOOR = 0.001
+// Numeric tolerance lives in src/lib/normalize/numeric.ts now (±5% with a
+// 0.001 absolute floor). The structured comparator (§3B) applies it — the
+// aggregator no longer hand-rolls its own agreement check.
 
 // Informational fields don't gate the verdict — they're descriptive text
 // the reviewer reads, not values the calculator observes. Different
@@ -362,11 +361,18 @@ export function computeKeyDimension(
 ): string | null {
   switch (claimType) {
     case "earn_rate": {
-      // Categorized bonus → group by category. Uncategorized "base earn"
-      // collapses to a single dimension per card.
+      // P18 (§3A): earn-rate claims are separated by BOTH the category
+      // dimension AND the reward formula, so a simple cashback % and a
+      // points/miles conversion never land in the same cross-check group.
+      // (Blue Cash's 1.2% cashback base must NOT co-group with its
+      // HK$6=1 mile alt mode — both are base_earn.) Reward currency is part
+      // of the discriminator for point/mile formulas so an amex_points mode
+      // and an asia_miles mode stay distinct. The category part stays a bare
+      // `category_slug=X` / `rule_type=base_earn` prefix so the cap-stitcher
+      // (which keys caps by category) can recover it via stripFormulaSuffix.
       const cat = pickString(payload, "categorySlug")
-      if (cat) return `category_slug=${cat}`
-      return "rule_type=base_earn"
+      const base = cat ? `category_slug=${cat}` : "rule_type=base_earn"
+      return `${base}${FORMULA_SEP}${formulaDiscriminator(payload)}`
     }
     case "cap": {
       // Cap is conceptually tied to an earn_rate. p2-v3 requires the
@@ -417,6 +423,42 @@ export function computeKeyDimension(
 function pickString(payload: Record<string, unknown>, key: string): string | null {
   const v = payload[key]
   return typeof v === "string" && v.length > 0 ? v.toLowerCase() : null
+}
+
+// P18 (§3A): the earn_rate key_dimension carries a formula discriminator
+// appended after this separator, e.g.
+//   category_slug=dining_local|formula=simple_percent
+//   rule_type=base_earn|formula=points_per_hkd:asia_miles
+// Cap groups are keyed WITHOUT this suffix (by category only), so the
+// cap-stitcher strips it with stripFormulaSuffix() to recover the category.
+export const FORMULA_SEP = "|formula="
+
+// A stable discriminator for a reward formula: its type plus (for point/mile
+// formulas that carry one) the reward currency. Never infers direction/units
+// from numeric size — reads declared fields only (§4B).
+export function formulaDiscriminator(payload: Record<string, unknown>): string {
+  const type =
+    pickString(payload, "rewardFormulaType") ??
+    pickString(payload, "type") ??
+    inferFormulaType(payload)
+  const currency = pickString(payload, "currencySlug")
+  return currency ? `${type}:${currency}` : type
+}
+
+// Fallback for (usually test / legacy) payloads that omit rewardFormulaType.
+function inferFormulaType(payload: Record<string, unknown>): string {
+  if ("rate" in payload) return "simple_percent"
+  if ("perHkd" in payload || "points" in payload) return "points_per_hkd"
+  return "unknown"
+}
+
+// Recover the bare category dimension (category_slug=X / rule_type=base_earn)
+// from an earn_rate key_dimension by dropping the |formula=... suffix. The
+// materializer's cap-stitcher matches caps by category. Safe (identity) on
+// keys that never carried a suffix.
+export function stripFormulaSuffix(keyDimension: string): string {
+  const i = keyDimension.indexOf(FORMULA_SEP)
+  return i === -1 ? keyDimension : keyDimension.slice(0, i)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -517,43 +559,26 @@ export function decideVerdict(claims: readonly LoadedClaim[]): Verdict {
   }
 }
 
-// claimAgreesWith — true iff every shared CALCULATOR-OBSERVED field is
-// consistent within tolerance. Missing fields on either side are not a
-// conflict; they're just less information. Informational fields
-// (waiverConditions, note, etc.) are skipped entirely — the reviewer
-// sees them on the claim but the verdict doesn't gate on them.
+// Canonicalized informational field names — structured-compare canonicalizes
+// keys to lowercase-alphanumeric, so match that form here.
+const INFORMATIONAL_FIELDS_CANON: ReadonlySet<string> = new Set(
+  [...INFORMATIONAL_FIELDS].map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, "")),
+)
+
+// claimAgreesWith — true unless the claim REALLY conflicts with the canonical
+// on a calculator-observed field. P18 (§3B) routes this through the shared
+// structured comparator: field names + numeric representations normalized,
+// array ordering ignored, object-array components matched by identity (fixes
+// the old String(object) → "[object Object]" bug where HK$500 cashback and
+// HK$100 Octopus compared equal), and a missing optional field is never a
+// contradiction. Informational text fields don't gate the verdict.
 export function claimAgreesWith(
   claim: Record<string, unknown>,
   canonical: Record<string, unknown>,
 ): boolean {
-  for (const [k, v] of Object.entries(claim)) {
-    if (INFORMATIONAL_FIELDS.has(k)) continue
-    if (!(k in canonical)) continue
-    if (!valuesAgree(v, canonical[k])) return false
-  }
-  return true
-}
-
-function valuesAgree(a: unknown, b: unknown): boolean {
-  if (typeof a === "number" && typeof b === "number") {
-    const denom = Math.max(Math.abs(a), Math.abs(b), NUMERIC_ABSOLUTE_FLOOR)
-    return Math.abs(a - b) / denom <= NUMERIC_RELATIVE_TOLERANCE
-  }
-  if (typeof a === "string" && typeof b === "string") {
-    return a.trim().toLowerCase() === b.trim().toLowerCase()
-  }
-  if (typeof a === "boolean" && typeof b === "boolean") {
-    return a === b
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false
-    const sa = [...a].map((x) => String(x).toLowerCase()).sort()
-    const sb = [...b].map((x) => String(x).toLowerCase()).sort()
-    return sa.every((v, i) => v === sb[i])
-  }
-  // Mixed types — strings vs numbers etc. Don't equate; the prompt is
-  // supposed to produce same-typed values for the same field.
-  return a === b
+  return structuresAgree(claim, canonical, {
+    ignoreKeys: INFORMATIONAL_FIELDS_CANON,
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
