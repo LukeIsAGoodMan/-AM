@@ -1,0 +1,35 @@
+# Stage 1A human-reviewed expected outcome — American Express Blue Cash.
+#
+# Per §8: these are reviewed CALCULATOR-RELEVANT facts, NOT claim-count
+# assertions. The HK$500 + HK$100 welcome components become a Stage 2
+# structural fixture — do NOT assert welcome envelopes here.
+card: american-express-amex-blue-cash-credit-card
+
+annual_fee:
+  expected_hkd: 0
+  # No current official primary standard fee among live claims → policy 3
+  # (insufficient): existing value left unchanged, review task created.
+  outcome: insufficient
+  publish_authority: legacy_unverified
+
+base_spend_cashback:
+  rate: 0.012 # 1.2% — MUST be an ACTIVE base rule
+  publish_authority: auto
+  active_for_calculator: true
+
+insurance:
+  # §8: NO active insurance-specific 1.2% rule.
+  active_category_rule: false
+  source_claim: 6db31629 # mrmiles 「如當面交付保險費用都有1.2%消費回贈！」
+  disposition: rejected # retained as rejected provenance, not deleted
+  # The 1.2% base already covers insurance; the legacy category rule is off.
+  legacy_rule_deactivated: xchk__earn_rate__category_slug_insurance__b5bd8a26
+
+alternate_mode_hk6_eq_1_mile:
+  formula: "points_per_hkd — HK$6 = 1 Asia Mile"
+  # §8: remains an INACTIVE candidate unless officially verified.
+  publish_authority: candidate
+  active_for_calculator: false
+
+welcome_offer:
+  materialized: false # §7 — untouched in Stage 1A

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, like, sql, type SQL } from "drizzle-orm"
+import { and, eq, inArray, isNull, like, or, sql, type SQL } from "drizzle-orm"
 import { db } from "@/db/client"
 import {
   cards,
@@ -67,6 +67,9 @@ export type MaterializeOutcome =
       groupId: string
       reason: string
       existingRuleId?: string
+      // P18 (§3C): set when an inferred-category block also deactivated a
+      // pre-existing stale rule (e.g. Blue Cash's legacy insurance 1.2%).
+      deactivatedRuleSlug?: string
     }
   | {
       // P18 (§3E): annual_fee groups update cards.annual_fee_hkd, not a
@@ -135,11 +138,19 @@ export async function materializeApprovedGroups(
   opts: { dryRun?: boolean } = {},
 ): Promise<MaterializeSummary> {
   const conditions: SQL[] = [
-    // Eligibility: not yet materialized, has a canonical reading, verdict
-    // is agreeable (conflict groups need reviewer pick first via
-    // edit_canonical + manual status flip).
+    // Eligibility: not yet materialized, verdict is agreeable (conflict
+    // reward-rule groups need a reviewer pick first via edit_canonical +
+    // manual status flip). EXCEPTION (§3E): annual_fee groups are eligible
+    // even in `conflict` — the authority policy resolves the conflict itself
+    // (official source wins provisionally, outliers retained for review).
     isNull(crossCheckGroups.approvedRuleId),
-    inArray(crossCheckGroups.status, ["agreed", "single_source"]),
+    or(
+      inArray(crossCheckGroups.status, ["agreed", "single_source"]),
+      and(
+        eq(crossCheckGroups.claimType, "annual_fee"),
+        inArray(crossCheckGroups.status, ["agreed", "single_source", "conflict"]),
+      ),
+    )!,
   ]
   if (scope.groupIds && scope.groupIds.length > 0) {
     conditions.push(inArray(crossCheckGroups.id, scope.groupIds))
@@ -202,6 +213,33 @@ async function materializeOneInternal(
       existingRuleId: group.approvedRuleId,
     }
   }
+  // P18 (§3E): annual_fee updates cards.annual_fee_hkd through the authority
+  // policy, not a reward_rule. Route it FIRST — the policy resolves conflicts
+  // itself (a current official source wins provisionally), so a `conflict`
+  // verdict must NOT block it the way it blocks reward-rule materialization.
+  if (group.claimType === "annual_fee") {
+    if (!["agreed", "single_source", "conflict"].includes(group.status)) {
+      return {
+        kind: "skipped",
+        groupId: group.id,
+        reason: `annual_fee verdict '${group.status}' not processable`,
+      }
+    }
+    const res = await writeAnnualFee(group, { dryRun: opts.dryRun })
+    return {
+      kind: "annual_fee",
+      groupId: group.id,
+      cardId: res.cardId,
+      updated: res.updated,
+      oldValueHkd: res.oldValueHkd,
+      newValueHkd: res.newValueHkd,
+      authority: res.authority,
+      reason: res.reason,
+      retainedConflictClaimIds: res.retainedConflictClaimIds,
+      waiverClaimIds: res.waiverClaimIds,
+    }
+  }
+
   if (!group.canonicalPayload) {
     return {
       kind: "skipped",
@@ -221,24 +259,6 @@ async function materializeOneInternal(
       kind: "skipped",
       groupId: group.id,
       reason: `claim_type '${group.claimType}' not supported by P7 (see materializer doc)`,
-    }
-  }
-
-  // P18 (§3E): annual_fee updates cards.annual_fee_hkd through the authority
-  // policy, not a reward_rule. Route it to its own writer.
-  if (group.claimType === "annual_fee") {
-    const res = await writeAnnualFee(group, { dryRun: opts.dryRun })
-    return {
-      kind: "annual_fee",
-      groupId: group.id,
-      cardId: res.cardId,
-      updated: res.updated,
-      oldValueHkd: res.oldValueHkd,
-      newValueHkd: res.newValueHkd,
-      authority: res.authority,
-      reason: res.reason,
-      retainedConflictClaimIds: res.retainedConflictClaimIds,
-      waiverClaimIds: res.waiverClaimIds,
     }
   }
 
@@ -398,7 +418,29 @@ async function materializeOneInternal(
       })),
     })
     if (gate.action === "block") {
-      if (!opts.dryRun) {
+      // §3C: no active calculator rule should remain for the inferred
+      // category. Reconcile any pre-existing ACTIVE xchk rule on the same
+      // (card, category, rule_type) — e.g. Blue Cash's legacy insurance 1.2%
+      // materialized before this gate existed. yaml rules are never touched.
+      const stale = await findActiveXchkRule(group.cardId, categoryId, ruleType)
+      if (stale && !opts.dryRun) {
+        await db
+          .update(rewardRules)
+          .set({
+            isActiveForCalculator: false,
+            publishAuthority: "reviewer_rejected",
+            notes: `Deactivated by inferred-category gate: ${gate.reason}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(rewardRules.id, stale.id))
+        await ensureGateReviewTask({
+          group,
+          taskType: "inferred_category_review",
+          priority: "high",
+          title: `Inferred-category rule blocked — reject or reclassify`,
+          description: `${gate.reason}. Deactivated stale rule '${stale.slug}'.`,
+        })
+      } else if (!opts.dryRun) {
         await ensureGateReviewTask({
           group,
           taskType: "inferred_category_review",
@@ -410,7 +452,10 @@ async function materializeOneInternal(
       return {
         kind: "skipped",
         groupId: group.id,
-        reason: `inferred-category gate blocked: ${gate.reason}`,
+        reason:
+          `inferred-category gate blocked: ${gate.reason}` +
+          (stale ? `; deactivated stale rule '${stale.slug}'` : ""),
+        deactivatedRuleSlug: stale?.slug,
       }
     }
     if (gate.action === "candidate") {
@@ -855,6 +900,34 @@ async function loadMatchingCaps(
   }
 
   return results
+}
+
+// P18 (§3C): find an ACTIVE xchk__ rule on (card, rule_type, category) — the
+// stale rule an inferred-category block must deactivate. Only xchk rules;
+// hand-curated yaml is never touched by the gate.
+async function findActiveXchkRule(
+  cardId: string,
+  categoryId: string | null,
+  ruleType: string,
+): Promise<{ id: string; slug: string } | null> {
+  const row = (
+    await db
+      .select({ id: rewardRules.id, slug: rewardRules.slug })
+      .from(rewardRules)
+      .where(
+        and(
+          eq(rewardRules.cardId, cardId),
+          eq(rewardRules.ruleType, ruleType),
+          eq(rewardRules.isActiveForCalculator, true),
+          sql`slug LIKE 'xchk__%'`,
+          categoryId === null
+            ? isNull(rewardRules.categoryId)
+            : eq(rewardRules.categoryId, categoryId),
+        ),
+      )
+      .limit(1)
+  )[0]
+  return row ?? null
 }
 
 // P16 (D22): match hand-curated baseline yaml rules on (card, rule_type,

@@ -1,0 +1,32 @@
+# Stage 1A human-reviewed expected outcome — American Express Explorer.
+#
+# Per §8: reviewed calculator-relevant facts, NOT claim counts. Do NOT assert
+# "exactly three welcome envelopes" — welcome offers are Stage 2.
+card: american-express-explorer-credit-card
+
+reward_currency_display:
+  slug: amex_membership_rewards
+  # §3F: UI shows the name + abbreviation, never the raw slug.
+  expected_label: "American Express Membership Rewards (MR)"
+
+annual_fee:
+  before_hkd: 1800 # stale spreadsheet seed
+  expected_hkd: 2200 # supported current official value
+  # Published via explicit authority logic (official primary standard fee),
+  # provisionally — never silently 'auto'.
+  publish_authority: provisional_pending_review
+  official_claim: 42a62f31 # "Your Basic Card Annual Membership fee of HK$2,200 …"
+  outlier_9500_claim: 750f40eb # 「年費$9,500無得豁免」
+  outlier_disposition: >
+    preserved (currently superseded) — NOT auto-rejected. Investigate whether
+    HK$9,500 refers to another Amex product, a supplementary card, a
+    contaminated table, or an extraction error.
+
+base_earn:
+  # The card's MR base earn is the hand-curated yaml rule; the xchk base
+  # group deduped against it (D22). Off-taxonomy currency variants
+  # (amex_mr / membership_rewards_point) are correctly skipped (D19).
+  source: yaml (american-express-explorer-credit-card__base_earn)
+
+welcome_offer:
+  materialized: false # §7 — untouched in Stage 1A

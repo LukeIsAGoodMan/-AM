@@ -40,17 +40,19 @@ export function classifyAnnualFee(
   const amount = normalizeNumeric(payload["amountHkd"])
   const lower = snippet.toLowerCase()
 
-  // cardholder_type — supplementary is always explicitly labelled; a bare
-  // "annual fee HK$X" defaults to unknown (NOT primary) so we never over-set
-  // the primary fee from an ambiguous claim.
-  const supplementary = has(lower, ["supplementary", "additional card"]) ||
-    has(snippet, ["附屬", "副卡", "附属"])
+  // cardholder_type — a PRIMARY marker wins over a supplementary one when
+  // both appear, because these official snippets read "Basic Card annual fee
+  // HK$2,200 … (Supplementary Card HK$X)" and the extracted amount is the
+  // Basic (primary) fee. A bare "annual fee HK$X" defaults to unknown (NOT
+  // primary) so we never over-set the primary fee from an ambiguous claim.
   const primary = has(lower, ["basic card", "primary card", "principal card"]) ||
     has(snippet, ["主卡", "基本卡"])
-  const cardholderType: CardholderType = supplementary
-    ? "supplementary"
-    : primary
-      ? "primary"
+  const supplementary = has(lower, ["supplementary", "additional card"]) ||
+    has(snippet, ["附屬", "副卡", "附属"])
+  const cardholderType: CardholderType = primary
+    ? "primary"
+    : supplementary
+      ? "supplementary"
       : "unknown"
 
   // fee_kind
