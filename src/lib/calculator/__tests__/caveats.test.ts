@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { synthesizeCaveats } from "@/lib/calculator/caveats"
-import type { ResolvedRule } from "@/lib/calculator/resolved-rule"
+import {
+  buildRewardCurrencyDisplay,
+  type ResolvedRule,
+} from "@/lib/calculator/resolved-rule"
 import type { TransactionContext } from "@/lib/schemas/transaction"
 import type { RewardResult } from "@/lib/schemas/result"
 
@@ -65,6 +68,7 @@ describe("synthesizeCaveats", () => {
           formula: { type: "simple_percent", rate: 0.04 },
           rewardCurrencySlug: "hkd_cashback",
           rewardCurrencyValueHkd: 1,
+          rewardCurrency: buildRewardCurrencyDisplay("hkd_cashback", null, null),
           categorySlug: "dining_local",
           isOnline: null,
           isOverseas: null,
@@ -100,6 +104,7 @@ describe("synthesizeCaveats", () => {
           formula: { type: "simple_percent", rate: 0.04 },
           rewardCurrencySlug: "hkd_cashback",
           rewardCurrencyValueHkd: 1,
+          rewardCurrency: buildRewardCurrencyDisplay("hkd_cashback", null, null),
           categorySlug: "dining_local",
           isOnline: null,
           isOverseas: null,

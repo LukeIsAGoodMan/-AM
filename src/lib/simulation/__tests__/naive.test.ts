@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { NaiveSimulationEngine } from "@/lib/simulation/naive"
-import type { ResolvedRule } from "@/lib/calculator/resolved-rule"
+import {
+  buildRewardCurrencyDisplay,
+  type ResolvedRule,
+} from "@/lib/calculator/resolved-rule"
 
 // HSBC Red shape — mirrors data/cards/hsbc-red.yaml (M2 + M10):
 //   base_earn: 0.4% on everything
@@ -19,6 +22,11 @@ const baseRule = (
   status: "approved",
   rewardCurrencySlug: "hkd_cashback",
   rewardCurrencyValueHkd: 1.0,
+  rewardCurrency: buildRewardCurrencyDisplay(
+    o.rewardCurrencySlug ?? "hkd_cashback",
+    null,
+    null,
+  ),
   categorySlug: null,
   isOnline: null,
   isOverseas: null,

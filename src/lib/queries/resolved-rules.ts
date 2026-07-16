@@ -8,6 +8,7 @@ import {
 } from "@/db/schema/catalog"
 import { RewardFormulaSchema } from "@/lib/schemas/formula"
 import {
+  buildRewardCurrencyDisplay,
   parseCapsJson,
   type ResolvedRule,
   type StackingPolicy,
@@ -39,6 +40,8 @@ export async function loadResolvedRulesForCard(
       categorySlug: categories.slug,
       currencySlug: rewardCurrencies.slug,
       currencyValueHkd: rewardCurrencies.baseValueHkd,
+      currencyNameEn: rewardCurrencies.nameEn,
+      currencyNameZh: rewardCurrencies.nameZh,
     })
     .from(rewardRules)
     .leftJoin(categories, eq(rewardRules.categoryId, categories.id))
@@ -78,6 +81,8 @@ export async function loadResolvedRulesForAllActiveCards(): Promise<
         categorySlug: categories.slug,
         currencySlug: rewardCurrencies.slug,
         currencyValueHkd: rewardCurrencies.baseValueHkd,
+        currencyNameEn: rewardCurrencies.nameEn,
+        currencyNameZh: rewardCurrencies.nameZh,
       })
       .from(rewardRules)
       .leftJoin(categories, eq(rewardRules.categoryId, categories.id))
@@ -104,6 +109,8 @@ type Row = {
   categorySlug: string | null
   currencySlug: string | null
   currencyValueHkd: string | null
+  currencyNameEn: string | null
+  currencyNameZh: string | null
 }
 
 function mapRow(row: Row): ResolvedRule {
@@ -141,6 +148,11 @@ function mapRow(row: Row): ResolvedRule {
     rewardCurrencyValueHkd: row.currencyValueHkd
       ? Number(row.currencyValueHkd)
       : 1.0,
+    rewardCurrency: buildRewardCurrencyDisplay(
+      row.currencySlug ?? "hkd_cashback",
+      row.currencyNameEn,
+      row.currencyNameZh,
+    ),
     categorySlug: row.categorySlug,
     isOnline: r.isOnline,
     isOverseas: r.isOverseas,

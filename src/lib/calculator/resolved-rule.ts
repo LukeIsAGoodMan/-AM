@@ -18,6 +18,9 @@ export type ResolvedRule = {
   formula: RewardFormula
   rewardCurrencySlug: string
   rewardCurrencyValueHkd: number
+  // P18 (§3F): structured display for the reward currency so the UI shows
+  // "Membership Rewards Points (MR)" rather than the raw slug or a bare "MR".
+  rewardCurrency: RewardCurrencyDisplay
 
   // M2: flattened conditions. `null` = applies regardless of that dimension.
   categorySlug: string | null
@@ -72,6 +75,55 @@ export type ResolvedCap = {
   period: "transaction" | "day" | "month" | "quarter" | "year" | "campaign"
   amountHkd: number | null
   rewardAmount: number | null
+}
+
+// P18 (§3F). displayAbbreviation is a display-only convenience (e.g. "MR"),
+// NOT a claimed issuer reward-program relationship — the full reward_programs
+// model is Stage 2. null abbreviation → UI shows just the name.
+export type RewardCurrencyDisplay = {
+  slug: string
+  displayNameEn: string
+  displayNameZh: string | null
+  displayAbbreviation: string | null
+}
+
+// Curated fallback so cashback rules (which carry no currency FK) and known
+// programs still render a human name + abbreviation. Names mirror the
+// reward_currencies rows; the join value wins when present.
+const CURRENCY_DISPLAY_FALLBACK: Record<
+  string,
+  { en: string; zh: string | null; abbr: string | null }
+> = {
+  hkd_cashback: { en: "HKD Cashback", zh: "港幣現金回贈", abbr: null },
+  amex_membership_rewards: {
+    en: "American Express Membership Rewards",
+    zh: "美國運通積分獎賞",
+    abbr: "MR",
+  },
+  asia_miles: { en: "Asia Miles", zh: "亞洲萬里通", abbr: null },
+  avios: { en: "British Airways Avios", zh: "英航 Avios", abbr: "Avios" },
+}
+
+export function buildRewardCurrencyDisplay(
+  slug: string,
+  nameEn: string | null,
+  nameZh: string | null,
+): RewardCurrencyDisplay {
+  const fb = CURRENCY_DISPLAY_FALLBACK[slug]
+  return {
+    slug,
+    displayNameEn: nameEn ?? fb?.en ?? slug,
+    displayNameZh: nameZh ?? fb?.zh ?? null,
+    displayAbbreviation: fb?.abbr ?? null,
+  }
+}
+
+// "Membership Rewards Points (MR)" style label for UI. Falls back to just the
+// name when there's no abbreviation.
+export function formatRewardCurrency(c: RewardCurrencyDisplay): string {
+  return c.displayAbbreviation
+    ? `${c.displayNameEn} (${c.displayAbbreviation})`
+    : c.displayNameEn
 }
 
 // P17 (D23): parse the `caps` jsonb column shape into ResolvedCap[].

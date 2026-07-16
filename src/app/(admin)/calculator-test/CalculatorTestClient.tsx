@@ -8,6 +8,7 @@ import { synthesizeCaveats } from "@/lib/calculator/caveats"
 import { HardcodedMerchantResolver } from "@/lib/resolver/hardcoded"
 import type { TransactionContext } from "@/lib/schemas/transaction"
 import type { RewardResult } from "@/lib/schemas/result"
+import { formatRewardCurrency } from "@/lib/calculator/resolved-rule"
 import type {
   CalcTestCampaign,
   CalcTestCard,
@@ -850,8 +851,11 @@ function RankRow({
                     <div className="text-neutral-800">{b.ruleName}</div>
                     <div className="text-[11px] text-neutral-500">
                       <Badge tone="gray">{b.ruleType}</Badge>{" "}
-                      {b.rewardUnits.toFixed(2)} {b.rewardCurrencySlug} · conf{" "}
-                      {b.confidenceScore.toFixed(2)}
+                      {b.rewardUnits.toFixed(2)}{" "}
+                      <span title={b.rewardCurrency.slug}>
+                        {formatRewardCurrency(b.rewardCurrency)}
+                      </span>{" "}
+                      · conf {b.confidenceScore.toFixed(2)}
                       {src ? (
                         <>
                           {" · "}

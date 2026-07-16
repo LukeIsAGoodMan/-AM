@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { explainCalculate } from "@/lib/calculator/explain"
-import type { ResolvedRule } from "@/lib/calculator/resolved-rule"
+import {
+  buildRewardCurrencyDisplay,
+  type ResolvedRule,
+} from "@/lib/calculator/resolved-rule"
 import type { TransactionContext } from "@/lib/schemas/transaction"
 
 // explainCalculate mirrors calculate's pipeline but returns per-rule
@@ -16,6 +19,11 @@ const baseRule = (
   status: "approved",
   rewardCurrencySlug: "hkd_cashback",
   rewardCurrencyValueHkd: 1.0,
+  rewardCurrency: buildRewardCurrencyDisplay(
+    overrides.rewardCurrencySlug ?? "hkd_cashback",
+    null,
+    null,
+  ),
   categorySlug: null,
   isOnline: null,
   isOverseas: null,

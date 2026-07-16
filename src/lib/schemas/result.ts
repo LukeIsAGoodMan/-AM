@@ -1,5 +1,7 @@
 // PRD §8 — calculator output shape.
 
+import type { RewardCurrencyDisplay } from "@/lib/calculator/resolved-rule"
+
 export type ConfidenceLevel = "high" | "medium" | "low"
 
 export type RewardBreakdownItem = {
@@ -7,6 +9,8 @@ export type RewardBreakdownItem = {
   ruleName: string
   ruleType: string
   rewardCurrencySlug: string
+  // P18 (§3F): structured display object for the reward currency.
+  rewardCurrency: RewardCurrencyDisplay
   rewardUnits: number
   rewardHkd: number
   sourceId: string | null

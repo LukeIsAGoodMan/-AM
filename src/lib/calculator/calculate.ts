@@ -85,6 +85,8 @@ export function calculate(
     ruleName: c.rule.ruleName,
     ruleType: c.rule.ruleType,
     rewardCurrencySlug: c.rule.rewardCurrencySlug,
+    // P18 (§3F): structured display so the UI shows "… (MR)" not the slug.
+    rewardCurrency: c.rule.rewardCurrency,
     rewardUnits: c.rewardUnits,
     rewardHkd: c.rewardHkd,
     sourceId: c.rule.sourceId,

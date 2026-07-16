@@ -10,6 +10,7 @@ import {
 } from "@/db/schema/catalog"
 import { RewardFormulaSchema } from "@/lib/schemas/formula"
 import {
+  buildRewardCurrencyDisplay,
   parseCapsJson,
   type ResolvedRule,
   type StackingPolicy,
@@ -66,6 +67,8 @@ export async function loadProjectionTestData(): Promise<ProjectionTestData> {
           categorySlug: categories.slug,
           currencySlug: rewardCurrencies.slug,
           currencyValueHkd: rewardCurrencies.baseValueHkd,
+          currencyNameEn: rewardCurrencies.nameEn,
+          currencyNameZh: rewardCurrencies.nameZh,
         })
         .from(rewardRules)
         .leftJoin(categories, eq(rewardRules.categoryId, categories.id))
@@ -144,6 +147,8 @@ type Row = {
   categorySlug: string | null
   currencySlug: string | null
   currencyValueHkd: string | null
+  currencyNameEn: string | null
+  currencyNameZh: string | null
 }
 
 // Mirrors mapRow in calculator-test.ts / resolved-rules.ts. Hand-kept in sync.
@@ -167,6 +172,11 @@ function mapRow(row: Row): ResolvedRule {
     rewardCurrencyValueHkd: row.currencyValueHkd
       ? Number(row.currencyValueHkd)
       : 1.0,
+    rewardCurrency: buildRewardCurrencyDisplay(
+      row.currencySlug ?? "hkd_cashback",
+      row.currencyNameEn,
+      row.currencyNameZh,
+    ),
     categorySlug: row.categorySlug,
     isOnline: r.isOnline,
     isOverseas: r.isOverseas,

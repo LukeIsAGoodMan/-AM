@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { calculate } from "@/lib/calculator/calculate"
-import type { ResolvedRule } from "@/lib/calculator/resolved-rule"
+import {
+  buildRewardCurrencyDisplay,
+  type ResolvedRule,
+} from "@/lib/calculator/resolved-rule"
 import type { TransactionContext } from "@/lib/schemas/transaction"
 import { HardcodedMerchantResolver } from "@/lib/resolver/hardcoded"
 
@@ -14,6 +17,11 @@ const baseRule = (
   status: "approved",
   rewardCurrencySlug: "hkd_cashback",
   rewardCurrencyValueHkd: 1.0,
+  rewardCurrency: buildRewardCurrencyDisplay(
+    overrides.rewardCurrencySlug ?? "hkd_cashback",
+    null,
+    null,
+  ),
   categorySlug: null,
   isOnline: null,
   isOverseas: null,
