@@ -1,5 +1,7 @@
 "use server"
 
+import { isEditUnlocked, EDIT_LOCKED_ERROR } from "@/lib/auth/edit-gate"
+
 import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/db/client"
@@ -60,6 +62,7 @@ export async function resolveReviewTask(
   taskId: string,
   action: ResolveAction,
 ): Promise<ResolveResult> {
+  if (!(await isEditUnlocked())) return { ok: false, error: EDIT_LOCKED_ERROR }
   try {
     const taskRows = await db
       .select({

@@ -25,6 +25,17 @@ async function main() {
     waitUntil: "networkidle",
   })
 
+  // P18: editing is now password-gated (view stays open). Unlock so the
+  // edit tests (4/5/9/13) can drive the mutating actions.
+  console.log("\n=== Test 0: edit-lock unlock ===")
+  await page.fill(
+    "input[placeholder='edit password']",
+    process.env.ADMIN_EDIT_PASSWORD ?? "askmike-dev",
+  )
+  await page.click("button:has-text('Unlock edit')")
+  await page.waitForSelector("text=Edit unlocked", { timeout: 5000 })
+  console.log("edit unlocked ✓")
+
   console.log("\n=== Test 1: campaign auto-prefill ===")
   const campaignBox = page.locator(
     "li.flex.items-center.gap-1\\.5:has(span:text('HSBC Red — Q3 2026 Online Extra 2%')) input[type=checkbox]",
@@ -175,7 +186,7 @@ async function main() {
   // `.border-emerald-200` alone matches multiple elements. Scope to the
   // Actions card, whose only emerald element is the result banner
   // (text-emerald-800 · bg-emerald-50 without the /30).
-  await page.click("button:has-text('Approve')")
+  await page.click("button:text-is('Approve')")
   await page.waitForSelector(
     ".rounded-lg:has(h3:has-text('Actions')) .border-emerald-200",
     { timeout: 6000 },
@@ -289,6 +300,35 @@ async function main() {
     .locator("div.bg-emerald-50\\/30 blockquote")
     .count()
   console.log(`provenance claim blockquotes rendered: ${supportingClaims}`)
+
+  console.log("\n=== Test 13: P18 conflict picker + edit-lock ===")
+  // Navigate to a review-task detail (has a group + claims) → the picker
+  // renders the source versions + a manual-input radio.
+  await page.goto("http://localhost:3000/review", { waitUntil: "networkidle" })
+  const anyTaskHref = await page
+    .locator("a:text-is('open →')")
+    .first()
+    .getAttribute("href")
+  if (anyTaskHref) {
+    await page.goto(`http://localhost:3000${anyTaskHref}`, {
+      waitUntil: "networkidle",
+    })
+    const pickerVisible = await page
+      .locator("text=Resolve conflict — pick a version")
+      .first()
+      .isVisible()
+      .catch(() => false)
+    const versionRadios = await page
+      .locator("input[name='conflict-version']")
+      .count()
+    console.log(
+      `conflict picker present: ${pickerVisible} · version options: ${versionRadios}`,
+    )
+  }
+  // Lock edit again → the top bar flips back to "View only".
+  await page.click("button:has-text('Lock')")
+  await page.waitForSelector("text=View only", { timeout: 4000 })
+  console.log("re-locked → View only ✓")
 
   await browser.close()
 }

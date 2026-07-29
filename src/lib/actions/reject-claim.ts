@@ -1,5 +1,7 @@
 "use server"
 
+import { isEditUnlocked, EDIT_LOCKED_ERROR } from "@/lib/auth/edit-gate"
+
 import { revalidatePath } from "next/cache"
 import { rejectClaim, type RejectClaimResult } from "@/lib/extraction/reject-claim"
 
@@ -11,6 +13,14 @@ export async function rejectClaimAction(input: {
   reason: string
   reviewerEmail: string
 }): Promise<RejectClaimResult> {
+  if (!(await isEditUnlocked())) {
+    return {
+      ok: false,
+      claimId: input.claimId,
+      error: EDIT_LOCKED_ERROR,
+      tasksDismissed: 0,
+    }
+  }
   const result = await rejectClaim(input)
   if (result.ok) {
     revalidatePath("/review")

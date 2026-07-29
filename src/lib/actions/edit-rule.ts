@@ -1,5 +1,7 @@
 "use server"
 
+import { isEditUnlocked, EDIT_LOCKED_ERROR } from "@/lib/auth/edit-gate"
+
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/db/client"
@@ -79,6 +81,7 @@ export type EditRuleResult =
   | { ok: false; error: string; changedEconomicFields?: string[] }
 
 export async function saveRuleEdit(input: EditRuleInput): Promise<EditRuleResult> {
+  if (!(await isEditUnlocked())) return { ok: false, error: EDIT_LOCKED_ERROR }
   const existing = await db
     .select()
     .from(rewardRules)

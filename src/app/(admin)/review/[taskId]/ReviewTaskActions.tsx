@@ -28,6 +28,7 @@ export function ReviewTaskActions({
   hasGroup,
   resolutionNote,
   resolvedAt,
+  canEdit,
 }: {
   taskId: string
   taskStatus: string
@@ -36,6 +37,7 @@ export function ReviewTaskActions({
   hasGroup: boolean
   resolutionNote: string | null
   resolvedAt: Date | null
+  canEdit: boolean
 }) {
   const isOpen = taskStatus === "open" || taskStatus === "in_progress"
   const [note, setNote] = useState("")
@@ -65,6 +67,11 @@ export function ReviewTaskActions({
         <CardTitle>Actions</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        {isOpen && !canEdit ? (
+          <p className="rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] text-neutral-500">
+            🔒 View only — unlock edit (top-right) to act on this task.
+          </p>
+        ) : null}
         {result ? (
           <div
             className={cn(
@@ -95,7 +102,7 @@ export function ReviewTaskActions({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={pending}
+                disabled={pending || !canEdit}
                 onClick={() =>
                   run({ kind: "approve", note: note.trim() || undefined })
                 }
@@ -105,7 +112,7 @@ export function ReviewTaskActions({
               </button>
               <button
                 type="button"
-                disabled={pending}
+                disabled={pending || !canEdit}
                 onClick={() =>
                   run({ kind: "reject", note: note.trim() || undefined })
                 }
@@ -116,7 +123,7 @@ export function ReviewTaskActions({
               {hasGroup && groupStatus !== "conflict" ? (
                 <button
                   type="button"
-                  disabled={pending}
+                  disabled={pending || !canEdit}
                   onClick={() =>
                     run({
                       kind: "mark_conflict",
@@ -167,7 +174,7 @@ export function ReviewTaskActions({
                     />
                     <button
                       type="button"
-                      disabled={pending}
+                      disabled={pending || !canEdit}
                       onClick={() =>
                         run({
                           kind: "edit_canonical",
@@ -205,7 +212,7 @@ export function ReviewTaskActions({
             </div>
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || !canEdit}
               onClick={() => run({ kind: "reopen" })}
               className={btnSecondary}
             >

@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Badge, StatusBadge, type BadgeTone } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ReviewTaskActions } from "./ReviewTaskActions"
+import { ConflictPicker } from "./ConflictPicker"
+import { isEditUnlocked } from "@/lib/auth/edit-gate"
 
 export const dynamic = "force-dynamic"
 
@@ -50,6 +52,17 @@ export default async function ReviewTaskDetailPage({
   const { task, card, group, claims } = detail
   const supporting = claims.filter((c) => c.isSupporting)
   const contradicting = claims.filter((c) => !c.isSupporting)
+
+  const canEdit = await isEditUnlocked()
+  // Each source's reading is a selectable "version" behind the placeholder.
+  const versions = claims.map((c) => ({
+    claimId: c.id,
+    payloadJson: formatPayload(c.structuredPayload),
+    sourceTitle: c.source.title,
+    priorityLabel: priorityLabel(c.source.sourcePriority),
+    quote: c.extractedTextSnippet,
+    isSupporting: c.isSupporting,
+  }))
 
   return (
     <div className="pb-12">
@@ -148,6 +161,15 @@ export default async function ReviewTaskDetailPage({
             </Card>
           ) : null}
 
+          {group && versions.length > 0 ? (
+            <ConflictPicker
+              taskId={task.id}
+              versions={versions}
+              currentCanonicalJson={formatPayload(group.canonicalPayload ?? {})}
+              canEdit={canEdit}
+            />
+          ) : null}
+
           <ReviewTaskActions
             taskId={task.id}
             taskStatus={task.status}
@@ -156,6 +178,7 @@ export default async function ReviewTaskDetailPage({
             hasGroup={!!group}
             resolutionNote={task.resolutionNote}
             resolvedAt={task.resolvedAt}
+            canEdit={canEdit}
           />
         </div>
 

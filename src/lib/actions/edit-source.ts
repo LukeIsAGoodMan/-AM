@@ -1,5 +1,7 @@
 "use server"
 
+import { isEditUnlocked, EDIT_LOCKED_ERROR } from "@/lib/auth/edit-gate"
+
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/db/client"
@@ -45,6 +47,7 @@ const VALID_STATUSES = ["active", "archived", "needs_recheck"]
 export async function saveSourceEdit(
   input: EditSourceInput,
 ): Promise<EditSourceResult> {
+  if (!(await isEditUnlocked())) return { ok: false, error: EDIT_LOCKED_ERROR }
   if (!VALID_SOURCE_TYPES.includes(input.sourceType)) {
     return { ok: false, error: `source_type '${input.sourceType}' is not a recognised value.` }
   }
