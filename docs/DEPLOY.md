@@ -88,6 +88,15 @@ DATABASE_URL="<hosted-pooled-url>" pnpm db:migrate
 
 ## Gotchas
 
+- **Use the POOLER host, not the direct `db.<ref>.supabase.co` host.** New
+  Supabase projects make the direct host **IPv6-only**, so IPv4-only clients
+  (Docker, many CI/serverless) get "Network is unreachable". The Supavisor
+  pooler host (`aws-<n>-<region>.pooler.supabase.com`, username
+  `postgres.<project-ref>`) is IPv4. Confirmed working for this project:
+  `aws-1-us-west-2.pooler.supabase.com` — transaction pooler `:6543`
+  (Vercel `DATABASE_URL`), session pooler `:5432` (used for the bulk data
+  copy). Verified: `pnpm tsx scripts/diagnose.ts` passes against the 6543
+  pooler.
 - The repo name has a leading dash (`-AM`). This is cosmetic — Vercel builds
   the repo contents, not by package name.
 - If a page errors with "DATABASE_URL is not set", the env var wasn't set on
