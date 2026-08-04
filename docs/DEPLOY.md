@@ -29,7 +29,7 @@ as-is with a pooled URL — no code change.
 **Option A (I do it):** paste me the pooled connection string and I run:
 
 ```bash
-# schema (0000..0014) — drizzle migrate against the hosted DB
+# schema (0000..0015) — drizzle migrate against the hosted DB
 DATABASE_URL="<hosted-pooled-url>" pnpm db:migrate
 
 # copy ALL current data (74 cards, rules, claims, cross-check groups,
@@ -85,6 +85,32 @@ DATABASE_URL="<hosted-pooled-url>" pnpm db:migrate
 ```
 
 (or add it as a Vercel deploy hook / one-off command).
+
+### PENDING — Stage 1B `0015` + rule-identity backfill (on local only, NOT yet on Supabase)
+
+`0015_rule_identities.sql` and its one-time identity backfill are applied on the **local** DB
+only, so local and Supabase currently diverge. To level the hosted DB (both steps are idempotent;
+the backfill skips any rule that already has an identity, and is reversible via
+`DELETE FROM rule_identities;`):
+
+```bash
+# 1) schema — prefer the SESSION pooler :5432 (or the direct host) for DDL
+DATABASE_URL="<hosted-session-pooler-url>" pnpm db:migrate
+
+# 2) DRY-RUN the backfill (writes nothing — prints the 1:1 plan + any scope-key collisions)
+DATABASE_URL="<hosted-pooled-url>" pnpm exec tsx scripts/backfill-rule-identities.ts
+
+# 3) WRITE (needs both gates; ~213 rules today, so 250 is head-room)
+DATABASE_URL="<hosted-pooled-url>" pnpm exec tsx scripts/backfill-rule-identities.ts \
+  --enable-write --max-write-count 250
+```
+
+**Option A (I do it):** paste me the hosted connection string (or drop it into
+`.env.production.local`, git-ignored) and I run the three commands.
+**Option B (you do it):** run them yourself, or via `.env.production.local` +
+`pnpm backfill:identities:prod` (dry-run) then `pnpm backfill:identities:prod --enable-write --max-write-count 250`.
+
+Verify after: `SELECT count(*) FROM rule_identities;` should equal `SELECT count(*) FROM reward_rules;`.
 
 ## Gotchas
 

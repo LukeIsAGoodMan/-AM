@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/docs/claude/CURRENT.md\"; if [ -f \"$f\" ]; then echo '=== docs/claude/CURRENT.md (cross-session state — run /bootstrap <work package> to begin) ==='; cat \"$f\"; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

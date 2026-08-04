@@ -2,6 +2,15 @@
 
 Companion to [prd.md](./prd.md). PRD says **what** and **why**; roadmap says **in what order** and **how to know each step is done**.
 
+> ⚠️ **STATUS — this file is the historical plan, NOT the current status.** It covers the
+> original **MVP (M0–M17)** and **Phase-2 plan (P1–P12)** only. Work has since continued through
+> **P13–P18** — cap/currency hardening (P13–P17, D19–D23), **Stage 1A** authority states *(shipped
+> + deployed live to Vercel/Supabase; P18, D24–D29, migration `0014`)*, and **Stage 1B core**
+> persistent rule identity *(in progress; D30, migration `0015`)*. See **"Phase 2.5 — P13–P18"**
+> near the bottom for the summary. **The single source of truth for where the project is right now
+> is [`docs/claude/CURRENT.md`](./claude/CURRENT.md)** + `docs/decisions.md` (D19–D30) + `git log`.
+> The milestones below are original intent, not a live checklist.
+
 ## Design Principles
 
 1. **Each milestone is one sit-down** (2–8 hours), ending with PR-able output.
@@ -518,6 +527,37 @@ Listed in PRD §7 and reserved in Zod's `RewardFormulaTypes` const, but `applyFo
 **When**: when Citi Octopus or similar joins the approved set.
 
 ---
+
+## Phase 2.5 — P13–P18: cap/currency hardening, Stage 1A authority, Stage 1B identity
+
+Not in the original 4-week plan; added as the extraction pipeline met real cards. Milestone-level
+only — authoritative detail is in `docs/decisions.md` (D19–D30) and `docs/claude/CURRENT.md`.
+
+- **P13–P17 — cross-check + cap/currency hardening** (D19–D23):
+  - **P13 (D19)** — currency FK is load-bearing for `points_per_hkd`; materializer + calculator
+    refuse partial rules with a null currency.
+  - **P14 (D20)** — extraction prompt v3: caps carry their own gating fields; base_earn guard.
+  - **P15 (D21)** — shared-cap accrual via `cap_usage_key` (fan-out + card-level cap stitch) **and
+    reward-basis caps in the calculator** → closes schema-gaps **G2 + G3** below.
+  - **P16 (D22)** — materializer dedups `xchk__` rules against hand-curated YAML baselines.
+  - **P17 (D23)** — **multi-cap per rule** via a `caps` jsonb array (migrations `0012`–`0013`) +
+    a YAML rate-calibration data audit.
+- **P18 Stage 1A — controlled publication authority** (D24–D29, migration `0014`): normalize lib +
+  structured object-array compare; aggregator formula-split earn groups (D24); inferred-category +
+  alt-mode publication gates + prompt `p2-v4` (D26/D27); annual-fee classify → provisional publish
+  (D25); reward-currency display + `reject_claim`; canary CLI + audit-diff (D29); seven
+  publish-authority states, legacy rows default `legacy_unverified` **never `auto`** (D28).
+  **Shipped + deployed live** to Vercel + Supabase (admin edit-password gate + conflict picker; see
+  `DEPLOY.md`).
+- **P18 Stage 1B core — persistent rule identity** (D30, migration `0015`, *in progress*):
+  `rule_identities` + `reviewer_overrides` + a deterministic 1:1 legacy backfill. Applied on the
+  **local** DB; **Supabase pending** (see `DEPLOY.md` → "Migrations on future deploys"). Owner-approved
+  2026-07-29 for **Stage 1B only** — Stage 2/3 stay gated. Deferred within 1B: `rule_identity_events`,
+  stale-override detection, reconciliation matcher, durable review workflow.
+
+**Effect on "Known schema gaps" above:** **G2** (reward-basis cap) and **G3** (shared caps) were
+addressed in P15/P17 (D21/D23). **G1** (activation time window) and **G4** (`first_n_transactions_bonus`)
+remain open. The G-list is kept for history — check the decisions log before assuming a gap is still open.
 
 ## Phase 3+ teaser (not designed yet)
 

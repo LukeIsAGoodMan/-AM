@@ -9,6 +9,7 @@ import {
   primaryKey,
   uniqueIndex,
   index,
+  check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
@@ -266,3 +267,137 @@ export const rewardRuleSources = pgTable("reward_rule_sources", {
 
 export type RewardRuleSource = typeof rewardRuleSources.$inferSelect
 export type NewRewardRuleSource = typeof rewardRuleSources.$inferInsert
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage 1B (P18 · D30) — persistent rule identity + reviewer overrides.
+//
+// Spec §6. A reward_rule ROW is disposable: recrawl / re-materialization / row
+// recreation / category correction / effective-date enrichment / source-priority
+// changes all churn the physical row. The *identity* of the logical rule must
+// survive that churn, so overrides and (future) merge/split audit can bind to
+// something stable — NOT to the regenerated row UUID (§6A, §12).
+//
+// Dependency direction (D11): these tables live in the extraction namespace and
+// reference catalog (cards, reward_rules) one-way. We deliberately do NOT add a
+// reward_rules.rule_identity_id FK — that would make catalog depend on this file.
+// The binding is owned here via origin_rule_id, and durably mirrored in
+// audit_metadata so it outlives an ON DELETE SET NULL of the physical rule.
+
+export const ruleIdentities = pgTable("rule_identities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Immutable scope anchor (§6A). A card is never re-slugged in place, so this
+  // is the one hard structural boundary an identity may never cross.
+  cardId: uuid("card_id")
+    .notNull()
+    .references(() => cards.id, { onDelete: "cascade" }),
+  // The legacy reward_rule this identity was backfilled from (§6C: "one
+  // existing legacy rule receives one identity"). SET NULL — if the physical
+  // row is later re-materialized away, the identity survives; the durable copy
+  // of the origin id lives in audit_metadata so the trail is never lost.
+  originRuleId: uuid("origin_rule_id").references(
+    (): AnyPgColumn => rewardRules.id,
+    { onDelete: "set null" },
+  ),
+  // Deterministic discriminator over STABLE scope dimensions only (§6B): card,
+  // structural rule_type, reward mode (formula_type + currency), campaign-vs-
+  // permanent, and eligibility flags. Deliberately EXCLUDES mutable/correctable
+  // fields — category, effective dates, source/confidence, reviewer notes, the
+  // row UUID (§6A). NOT unique: two legacy rows may compute the same key and we
+  // must NOT collapse them (§6C "do NOT auto-merge") — it is a matcher hint for
+  // a future reconciliation step, never an auto-merge key.
+  stableScopeKey: text("stable_scope_key").notNull(),
+  // legacy_unreconciled = created by the deterministic backfill, not yet
+  // confirmed by a matcher/reviewer (§6C). active/reconciled/retired are for
+  // the later reconciliation + merge/split workflow (deferred within Stage 1B).
+  status: text("status").default("legacy_unreconciled").notNull(),
+  // Durable audit (§6C, and groundwork for §6D reversible events): origin rule
+  // id + slug + the scope inputs the key was computed from + backfill provenance
+  // (script version / run). Survives an ON DELETE SET NULL of origin_rule_id.
+  auditMetadata: jsonb("audit_metadata").default("{}").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}, (table) => [
+  // Idempotent 1:1 backfill guard: a given legacy rule maps to at most one
+  // identity. Partial (WHERE NOT NULL) so many future identities may have no
+  // origin rule without colliding.
+  uniqueIndex("rule_identities_origin_rule_unique")
+    .on(table.originRuleId)
+    .where(sql`${table.originRuleId} IS NOT NULL`),
+  index("rule_identities_card_id_idx").on(table.cardId),
+  index("rule_identities_scope_key_idx").on(table.stableScopeKey),
+  check(
+    "rule_identities_status_check",
+    sql`${table.status} IN ('legacy_unreconciled','active','reconciled','retired')`,
+  ),
+])
+
+export type RuleIdentity = typeof ruleIdentities.$inferSelect
+export type NewRuleIdentity = typeof ruleIdentities.$inferInsert
+
+// ─────────────────────────────────────────────────────────────────────────────
+// reviewer_overrides — a human decision that pins one field of one identity
+// (§6E). Bound to rule_identity_id + field_path + version_scope, NOT to a
+// regenerated row id (§12 "Do NOT bind future overrides only to regenerated row
+// IDs"). Each override carries its OWN comparison_policy — there is deliberately
+// no universal 5% threshold (§6E "Use field-specific comparison policies").
+//
+// baseline_value records the value the override was made against, so a later
+// stale-override detector (deferred Stage 1B work) can flag when the underlying
+// data has drifted from what the reviewer saw. No detector is built this session.
+
+export const reviewerOverrides = pgTable("reviewer_overrides", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ruleIdentityId: uuid("rule_identity_id")
+    .notNull()
+    .references(() => ruleIdentities.id, { onDelete: "cascade" }),
+  // Dotted path into the rule payload/columns, e.g. 'annual_fee' or
+  // 'reward_formula_payload.rate'. Free-text; the applier validates against a
+  // known field registry (later work), not the DB.
+  fieldPath: text("field_path").notNull(),
+  // '' = unscoped/global override. A concrete value scopes the override to a
+  // rule version/effective window (§6E "version scope where needed"). NOT NULL
+  // + '' default so the partial-unique index below has clean equality semantics
+  // (avoids Postgres NULL-distinct letting two global overrides coexist).
+  versionScope: text("version_scope").default("").notNull(),
+  // Field-specific comparison policy (§6E). exact = must match byte-for-byte;
+  // numeric_abs / numeric_pct = tolerance the FIELD chooses; set_equal = order-
+  // insensitive array equality. Explicitly NOT one global threshold.
+  comparisonPolicy: text("comparison_policy").default("exact").notNull(),
+  overrideValue: jsonb("override_value").notNull(),
+  baselineValue: jsonb("baseline_value"),
+  reason: text("reason").notNull(),
+  reviewerEmail: text("reviewer_email").notNull(),
+  // active = currently pinning; superseded = replaced by a newer override;
+  // withdrawn = reviewer took it back. Only 'active' rows apply.
+  status: text("status").default("active").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+}, (table) => [
+  index("reviewer_overrides_identity_field_idx").on(
+    table.ruleIdentityId,
+    table.fieldPath,
+  ),
+  // At most one ACTIVE override per (identity, field, version scope).
+  uniqueIndex("reviewer_overrides_active_unique")
+    .on(table.ruleIdentityId, table.fieldPath, table.versionScope)
+    .where(sql`${table.status} = 'active'`),
+  check(
+    "reviewer_overrides_status_check",
+    sql`${table.status} IN ('active','superseded','withdrawn')`,
+  ),
+  check(
+    "reviewer_overrides_comparison_policy_check",
+    sql`${table.comparisonPolicy} IN ('exact','numeric_abs','numeric_pct','set_equal')`,
+  ),
+])
+
+export type ReviewerOverride = typeof reviewerOverrides.$inferSelect
+export type NewReviewerOverride = typeof reviewerOverrides.$inferInsert
