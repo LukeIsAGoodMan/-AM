@@ -10,6 +10,63 @@ string and I'll run the schema migration + copy the real data.
 
 ---
 
+## Everyday workflow (dev → prod)
+
+Three things ship on **independent tracks** — pushing code does NOT migrate the
+DB or change env vars. Most deploy surprises come from conflating them.
+
+- **Track 1 — code**: `git push` to `main` → Vercel auto-builds & deploys.
+- **Track 2 — DB schema**: applied **manually** with `pnpm db:migrate` against
+  Supabase. `next build` never runs migrations.
+- **Track 3 — env/secrets**: set in the Vercel dashboard, then Redeploy.
+
+### A. Code-only change (no migration)
+
+1. *(Claude)* change code; run `pnpm typecheck` + `pnpm test` (+ `pnpm diagnose`
+   if it touches data/calculator) against local Docker — all green.
+2. *(Claude)* update `docs/claude/CURRENT.md`; append `docs/decisions.md` if it's a
+   load-bearing schema/architecture decision.
+3. *(Claude)* `git commit` — one milestone per commit, clear message.
+4. *(You)* `git push` to `main` → Vercel deploys. Then smoke-test the live site.
+
+### B. Change WITH a DB migration (order matters)
+
+1. *(Claude)* edit `src/db/schema/**` + add the migration (**append-only — never edit
+   an applied `00NN_*.sql`**); `pnpm db:migrate` to LOCAL; verify green.
+2. *(Claude)* commit (schema + migration + `decisions.md` in the same commit).
+3. *(You)* **apply the migration to Supabase FIRST, then deploy code**:
+   ```bash
+   ( set -a; . ./.env.production.local; set +a; pnpm db:migrate )   # session pooler :5432
+   ```
+   Additive tables/columns must exist before the new code references them.
+   (Destructive migrations reverse the order — Claude will flag those.)
+4. *(You)* `git push` → Vercel deploys. Re-run the Supabase Security Advisor if you
+   touched RLS/grants.
+
+### C. Data-only change (`data/**` YAML)
+
+`pnpm import:data` syncs to whichever DB `DATABASE_URL` points at. No migration needed.
+
+### Who does what
+
+| Action | Who | Note |
+|---|---|---|
+| Edit code / write migration / local verify / commit | **Claude** | always verifies locally before proposing a commit |
+| `git push` | **You** | in-sandbox git can't auth the HTTPS origin |
+| `pnpm db:migrate` / backfill against **Supabase** | **You** | production DB writes are permission-gated for Claude — you run them, or add a Bash allow-rule |
+| Vercel env vars | **You** | Claude has no Vercel access |
+| Read-only prod checks | **Claude** | e.g. `scripts/db-preflight.ts` (refuses localhost) |
+
+### Pre-commit checklist
+
+- [ ] `pnpm typecheck` clean · `pnpm test` green · `pnpm diagnose` green (if DB-touching)
+- [ ] `docs/decisions.md` appended for load-bearing schema/arch changes
+- [ ] `docs/claude/CURRENT.md` updated
+- [ ] migration applied to LOCAL; **remember to migrate PROD at deploy time**
+- [ ] no secrets staged (`.env*.local` are git-ignored — keep it that way)
+
+---
+
 ## Step 1 — Create a hosted Postgres (you)
 
 Recommended: **Neon** (neon.tech, free tier) or **Supabase**. After creating a

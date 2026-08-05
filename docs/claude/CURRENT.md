@@ -6,12 +6,13 @@ Legend: **[FACT]** = verified from repo/live this session · **[ASSUMPTION]** = 
 **[UNRESOLVED]** = open question needing an answer.
 
 - **Last updated:** 2026-08-05 — **`0015`+`0016` APPLIED to Supabase + backfill done + RLS verified**
-  (owner ran the writes; I did read-only verify). Edit-gate hardening (D31) + Stage 1B (D30) code
-  still **UNCOMMITTED**. Prior sessions: 2026-07-29 (Stage 1B core, `0015`/D30), 2026-07-28 (Stage 1A + deploy).
-- **Branch:** `main` · **Working tree:** clean except untracked cross-session scaffolding
-  (`.claude/`, `CLAUDE.md`, `docs/claude/`) — no uncommitted product code **[FACT]**
-- **HEAD:** `c28125b docs(deploy): note Supabase pooler host (IPv4) vs IPv6-only direct host` **[FACT]**
-- All product commits through `c28125b` are pushed to GitHub `LukeIsAGoodMan/-AM`. Pushed via the
+  (owner ran the writes; I did read-only verify). Stage 1B (D30) + edit-gate/RLS hardening (D31) are
+  now **COMMITTED + PUSHED** (`5e5abca` "fix", `97852ba` "fix 2"). Prior sessions: 2026-07-29 (Stage 1B
+  core, `0015`/D30), 2026-07-28 (Stage 1A + deploy).
+- **Branch:** `main` · **Working tree:** clean, up to date with `origin/main` (this doc-workflow commit
+  is the only thing pending push at handoff) **[FACT]**
+- **HEAD:** `97852ba` "fix 2" (edit-gate + RLS `0016`/D31) — vague messages, but content is D30+D31. **[FACT]**
+- All product commits through `97852ba` are pushed to GitHub `LukeIsAGoodMan/-AM`. Pushed via the
   **SSH URL** (`git@github.com:…`) because `origin` is HTTPS and can't auth in-sandbox — so the
   local `origin/main` **tracking ref is stale**; GitHub `main` = `c28125b`. **[FACT]**
 
