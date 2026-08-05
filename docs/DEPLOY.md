@@ -29,7 +29,7 @@ as-is with a pooled URL — no code change.
 **Option A (I do it):** paste me the pooled connection string and I run:
 
 ```bash
-# schema (0000..0015) — drizzle migrate against the hosted DB
+# schema (0000..0016) — drizzle migrate against the hosted DB
 DATABASE_URL="<hosted-pooled-url>" pnpm db:migrate
 
 # copy ALL current data (74 cards, rules, claims, cross-check groups,
@@ -58,6 +58,8 @@ Notes:
    - `DATABASE_URL` = the **pooled** hosted connection string (step 1).
    - `ADMIN_EDIT_PASSWORD` = the shared password PMs type to edit.
    - `EDIT_COOKIE_SECRET` = any long random string (e.g. `openssl rand -hex 32`).
+     **Required in prod** — the edit gate fails CLOSED (stays locked) if this and
+     `ADMIN_EDIT_PASSWORD` are both unset, rather than using a guessable fallback.
 3. **Deploy.** Every push to `main` redeploys automatically.
 
 ---
@@ -111,6 +113,52 @@ DATABASE_URL="<hosted-pooled-url>" pnpm exec tsx scripts/backfill-rule-identitie
 `pnpm backfill:identities:prod` (dry-run) then `pnpm backfill:identities:prod --enable-write --max-write-count 250`.
 
 Verify after: `SELECT count(*) FROM rule_identities;` should equal `SELECT count(*) FROM reward_rules;`.
+
+### PENDING — `0016` RLS + least-privilege lockdown (fixes Supabase "RLS Disabled in Public")
+
+Enables RLS on all 16 public tables and revokes the Data-API roles (`anon`,
+`authenticated`), so the anon/publishable key can no longer read/write these
+tables directly. **Zero app impact**: the app connects as the privileged owner
+role, which bypasses RLS (verified locally — `pnpm diagnose` green with RLS on).
+`0016` runs automatically after `0015` in the same `pnpm db:migrate`.
+
+**Before applying — snapshot current grants (so rollback can be exact):**
+
+```bash
+psql "<hosted-url>" -Atc "SELECT grantee, table_name, privilege_type
+  FROM information_schema.role_table_grants
+  WHERE table_schema='public' AND grantee IN ('anon','authenticated')
+  ORDER BY 1,2,3" > grants-before-0016.txt
+```
+
+**Apply** (bundled with `0015` — use the SESSION pooler `:5432` for DDL):
+
+```bash
+DATABASE_URL="<hosted-session-pooler-url>" pnpm db:migrate
+```
+
+**Verify** (all should be true):
+
+```sql
+-- every public table has RLS on:
+SELECT count(*) FILTER (WHERE rowsecurity) AS rls_on, count(*) FROM pg_tables WHERE schemaname='public';
+-- the stray policy is gone:
+SELECT * FROM pg_policies WHERE tablename='reward_rules';           -- expect 0 rows
+-- anon/authenticated have no table privileges:
+SELECT count(*) FROM information_schema.role_table_grants
+  WHERE table_schema='public' AND grantee IN ('anon','authenticated');  -- expect 0
+```
+
+Then re-check the app (`https://am-wrxk.vercel.app`) still renders + edits, and
+re-run the Supabase Security Advisor — the "RLS Disabled in Public" findings
+should clear.
+
+**Rollback** (only if a legitimate Data-API consumer breaks — restores the
+insecure baseline): `psql "<hosted-url>" -f drizzle/migrations/rollback/0016_rollback.sql`.
+
+⚠️ Confirm there is **no external Data-API consumer** (a separate tool, Edge
+Function, or webhook reading via the anon key) before applying — the app itself
+has none, but the lockdown blocks any that exist.
 
 ## Gotchas
 

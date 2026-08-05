@@ -5,7 +5,9 @@ session needs. Past detail lives in git history + `docs/decisions.md`, not here.
 Legend: **[FACT]** = verified from repo/live this session · **[ASSUMPTION]** = inferred, unconfirmed ·
 **[UNRESOLVED]** = open question needing an answer.
 
-- **Last updated:** 2026-07-29 — **Stage 1B CORE implemented** (rule_identities + reviewer_overrides + deterministic legacy backfill) on the LOCAL DB. ⚠️ **UNCOMMITTED**, and NOT applied to Supabase. Prior work session: 2026-07-28 (P18 Stage 1A + Vercel deploy EXECUTED + admin auth/conflict-picker)
+- **Last updated:** 2026-08-05 — **`0015`+`0016` APPLIED to Supabase + backfill done + RLS verified**
+  (owner ran the writes; I did read-only verify). Edit-gate hardening (D31) + Stage 1B (D30) code
+  still **UNCOMMITTED**. Prior sessions: 2026-07-29 (Stage 1B core, `0015`/D30), 2026-07-28 (Stage 1A + deploy).
 - **Branch:** `main` · **Working tree:** clean except untracked cross-session scaffolding
   (`.claude/`, `CLAUDE.md`, `docs/claude/`) — no uncommitted product code **[FACT]**
 - **HEAD:** `c28125b docs(deploy): note Supabase pooler host (IPv4) vs IPv6-only direct host` **[FACT]**
@@ -44,6 +46,31 @@ this file is the source of truth; also see `docs/decisions.md` D24–D30 + `docs
   merge/split table (§6D), stale-override *detection* logic, the reconciliation matcher, the durable
   review workflow. `0015` + backfill are **NOT on Supabase** (separate owner-triggered deploy).
 
+## Security — RLS + edit-gate hardening (this session · UNCOMMITTED · `0016` LOCAL-only) **[FACT]**
+
+Fixes the Supabase "RLS Disabled in Public" advisor (~14 tables) + hardens the admin gate. See **D31**.
+- **Audit finding**: AM has **no browser Supabase** (no `@supabase/supabase-js`, no Data-API calls, no
+  `NEXT_PUBLIC_*`, no service-role key). All DB access is Drizzle over a server-only `DATABASE_URL` as
+  the owner role; editing already goes through server actions + a signed HttpOnly cookie. The real hole
+  is only the Supabase PostgREST Data API exposing RLS-off tables to the anon key. So the fix is RLS +
+  revoke, **not** an auth rebuild (rejected adding a service-role/anon client — would add attack surface).
+- **Migration `0016_rls_least_privilege.sql`** (D31): RLS on all 16 tables + drop stray
+  `reward_rules` policy + revoke anon/authenticated (guarded for local). **Applied to LOCAL only**;
+  RLS-on is zero-impact (owner bypasses RLS — `diagnose` green). Rollback: `drizzle/migrations/rollback/0016_rollback.sql`.
+- **Gate hardening** (`src/lib/auth/edit-gate.ts`, `src/lib/actions/edit-auth.ts`): secret **fails
+  closed in prod** (no insecure fallback), token carries a **server-enforced expiry**, `sameSite:strict`,
+  best-effort throttle. Password stays `ADMIN_EDIT_PASSWORD` (owner chose plaintext env, not a hash).
+  Frontend unchanged — UX identical. `EDIT_COOKIE_SECRET` now effectively **required in prod**.
+- **DONE on Supabase 2026-08-05 [FACT — read-only verified this session]**: `0015`+`0016` applied
+  (17 migrations recorded), backfill ran (213 `rule_identities` = 213 `reward_rules`), RLS 16/16 on,
+  `reward_rules` 0 policies, **anon/authenticated grants = 0**. Grant snapshot captured pre-deploy
+  (anon/authenticated previously had ALL on every table). Note: RLS was already ON when we arrived
+  (owner had hit the advisor's Enable-RLS) — the real fix `0016` delivered was the grant revoke.
+- **STILL NOT done (owner)**: set Vercel `DATABASE_URL` (txn pooler `:6543`) + `EDIT_COOKIE_SECRET`
+  → Redeploy (fixes the failing build); re-run Supabase Security Advisor (should clear); **rotate the
+  DB password** (it was pasted in chat) + update Vercel + `.env.production.local`. Robust
+  cross-instance rate-limit still needs KV.
+
 ## Deployment — LIVE **[FACT]**
 
 - **App:** https://am-wrxk.vercel.app (Vercel). Verified via WebFetch: dashboard renders real
@@ -80,7 +107,15 @@ this file is the source of truth; also see `docs/decisions.md` D24–D30 + `docs
 
 ## Verification status
 
-**This session (2026-07-29), local Docker up [FACT — observed this session]:**
+**This session (2026-08-04) — security work [FACT — observed this session]:**
+- `pnpm typecheck` → **clean (exit 0)**. · `pnpm test` → **241 passed (24 files)** (+10 new
+  `edit-gate.test.ts`). · `pnpm diagnose` → ✓ All expectations met **with RLS enabled on all 16 tables**
+  (owner role bypasses RLS → zero app impact).
+- `0016` applied to LOCAL: `SELECT count(*) FILTER (WHERE rowsecurity)` = 16/16 public tables; 0
+  policies on `reward_rules`. anon/authenticated revokes were guarded no-ops (roles absent locally).
+- ⚠️ `verify:ui` NOT re-run (needs `pnpm dev`; frontend unchanged). Supabase NOT touched.
+
+**Stage 1B core session (2026-07-29), local Docker up [FACT]:**
 - `pnpm typecheck` → **clean (exit 0)**. · `pnpm test` → **231 passed (23 files)** (was 218/22;
   +13 new `rule-identity.test.ts`). · `pnpm diagnose` → ✓ All expectations met, **both before and
   after** the Stage 1B backfill (calculator unaffected).
@@ -134,14 +169,12 @@ scaffolding unless asked.
 
 Stage 1B **core** is implemented + verified on local, but uncommitted. Owner's pick for what's next:
 
-1. **Commit the Stage 1B core work** (product files below + `docs/decisions.md` D30). Owner asked to
-   commit only when told — this is uncommitted on purpose. Suggested message scope:
-   `feat(p18-stage-1b): rule_identities + reviewer_overrides + deterministic legacy backfill (D30)`.
-2. **Deploy `0015` + backfill to Supabase** *(owner-triggered — BLOCKED in-session: the Supabase
-   URL/password is NOT in this env, only in Vercel)*: turnkey runbook in `docs/DEPLOY.md` → "PENDING —
-   Stage 1B `0015` + rule-identity backfill". Provide the pooler URL (or drop it in git-ignored
-   `.env.production.local`), then `pnpm db:migrate` (session pooler) + `pnpm backfill:identities:prod
-   --enable-write --max-write-count 250`. Local and Supabase DIVERGE until then.
+1. **Commit the uncommitted work** (Stage 1B core + security, D30/D31). Owner asked to commit only
+   when told. Suggested split: `feat(p18-stage-1b): rule_identities + reviewer_overrides + backfill (D30)`
+   and `feat(security): Supabase RLS least-privilege 0016 + edit-gate hardening (D31)`.
+2. ✅ **Supabase `0015`+`0016` + backfill — DONE 2026-08-05** (see Security section). Remaining owner
+   steps to fully close out: set Vercel `DATABASE_URL` (txn pooler `:6543`) + `EDIT_COOKIE_SECRET` →
+   Redeploy (fixes build); re-run Security Advisor; rotate the DB password (was pasted in chat).
 3. **Continue Stage 1B (deferred pieces)** — still under the 2026-07-29 approval (Stage 1B only):
    `rule_identity_events` (§6D), stale-override detection, reconciliation matcher, durable review
    workflow. Would be a fresh `/bootstrap` per piece.
